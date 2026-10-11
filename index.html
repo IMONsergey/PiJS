@@ -1,82 +1,125 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="ru">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <meta name="theme-color" content="#101113" />
-    <meta name="description" content="Интерактивная лаборатория графики PiJS на основе PixiJS 8: WebGL-сцены, частицы, текст, геометрия и эффекты." />
-    <link rel="icon" type="image/svg+xml" href="/PiJS/icon.svg" />
-    <title>PiJS — Interactive Graphics Lab</title>
-    <script type="module" crossorigin src="/PiJS/assets/index-vKGq1Y0_.js"></script>
-    <link rel="stylesheet" crossorigin href="/PiJS/assets/index-CwXYSKAV.css">
-  </head>
-  <body>
-    <div id="app">
-      <header class="topbar">
-        <div class="topbar-brand">
-          <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
-          <span class="brand-wordmark">PiJS<span class="brand-dot">.</span></span>
-          <span class="brand-divider"></span>
-          <span class="brand-descriptor">Graphics Lab</span>
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <meta name="theme-color" content="#0b0d10"/>
+  <meta name="description" content="PiJS Motion Atlas — 100 interactive PixiJS WebGL experiments inspired by contemporary Awwwards motion design. Explore typography, particles, shaders, interactive galleries and spatial graphics."/>
+  <link rel="icon" type="image/svg+xml" href="/PiJS/icon.svg"/>
+  <title>PiJS Motion Atlas — 100 Interactive Studies</title>
+  <script type="module" crossorigin src="/PiJS/assets/index-B1KNIW4d.js"></script>
+  <link rel="stylesheet" crossorigin href="/PiJS/assets/index-DkWbQf8G.css">
+</head>
+<body>
+<div id="app">
+  <header class="site-header">
+    <a class="identity" href="/PiJS/" aria-label="PiJS Motion Atlas — главная">
+      <span class="identity-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <span class="identity-name">PiJS<span class="acid">.</span></span>
+      <span class="identity-rule"></span>
+      <span class="identity-descriptor">MOTION ATLAS</span>
+    </a>
+    <div class="header-badge"><span class="pulse-dot"></span> PIXIJS 8.22.0 / WEBGL</div>
+    <nav class="header-links" aria-label="Ресурсы">
+      <a href="https://github.com/IMONsergey/PiJS/tree/feat/awwwards-100-lab" target="_blank" rel="noopener noreferrer">SOURCE ↗</a>
+      <a href="https://pixijs.com/8.x/guides" target="_blank" rel="noopener noreferrer">DOCS ↗</a>
+    </nav>
+  </header>
+
+  <main>
+    <div class="masthead">
+      <div class="masthead-small"><span class="line"></span> INTERACTIVE GRAPHICS LAB / 2025—2026</div>
+      <div class="masthead-title-row">
+        <div>
+          <h1>100 <span class="title-outline">MOTION</span><br/>STUDIES<span class="acid">.</span></h1>
+          <p>Интерактивная коллекция современных motion-приёмов: типографика, шейдеры, частицы, галереи, переходы, графика и физика. Все сцены работают в браузере.</p>
         </div>
-        <nav class="topbar-actions" aria-label="Внешние ресурсы">
-          <a href="https://github.com/IMONsergey/PiJS" target="_blank" rel="noopener noreferrer">Source <span aria-hidden="true">↗</span></a>
-          <a href="https://pixijs.com/8.x/guides" target="_blank" rel="noopener noreferrer">Documentation <span aria-hidden="true">↗</span></a>
-          <span class="version-chip">8.22.0</span>
-        </nav>
-      </header>
-      <div class="workspace">
-        <aside class="sidebar" aria-label="Каталог сцен">
-          <div class="sidebar-intro">
-            <div class="eyebrow"><span class="status-dot"></span> INTERACTIVE ENGINE / 01</div>
-            <h1>Explore<br /><em>the canvas.</em></h1>
-            <p>Живая лаборатория возможностей PixiJS. Выбирай сцену и взаимодействуй с графикой.</p>
-          </div>
-          <div class="section-label"><span>EXPERIMENTS</span><span>07</span></div>
-          <div id="scene-list" class="scene-list" role="list"></div>
-          <div class="sidebar-bottom">
-            <span class="runtime-dot"></span>
-            <span>WEBGL / REAL-TIME</span>
-          </div>
-        </aside>
-        <main class="stage-main">
-          <div class="stage-header">
-            <div class="stage-context"><span class="muted">PLAYGROUND</span><span class="separator">/</span><span id="breadcrumb">Particle Field</span></div>
-            <div class="header-right"><span class="live-indicator"><i></i> LIVE RENDER</span><button type="button" class="icon-action" id="fullscreen" aria-label="Полноэкранный режим" title="Полноэкранный режим">⤢</button></div>
+        <div class="masthead-count"><strong>100</strong><span>ORIGINAL<br/>EXPERIMENTS</span></div>
+      </div>
+    </div>
+
+    <div class="workspace">
+      <section class="catalog-pane" aria-labelledby="catalog-heading">
+        <div class="catalog-toolbar">
+          <div class="catalog-title" id="catalog-heading"><span class="pulse-dot"></span><strong>EXPLORE THE COLLECTION</strong><span class="catalog-total" id="visible-count">100 / 100</span></div>
+          <button id="shuffle" class="tool-small" type="button" title="Случайная работа">↝ <span>RANDOM</span></button>
+        </div>
+        <div class="finder">
+          <span aria-hidden="true" class="find-icon">⌕</span>
+          <input id="search" type="search" placeholder="Find an effect, technique, category..." autocomplete="off" aria-label="Поиск по 100 работам"/>
+          <kbd>/</kbd>
+        </div>
+        <div class="filters" id="filters" role="group" aria-label="Фильтр коллекции"></div>
+        <div class="catalog-subhead"><span id="catalog-results">100 STUDIES</span><button type="button" id="favorites-filter" aria-pressed="false" class="favorite-filter">☆ FAVORITES <span id="favorites-count">0</span></button></div>
+        <div class="gallery" id="gallery" aria-label="Каталог 100 примеров"></div>
+        <div class="empty-state" id="empty-state" hidden><strong>Nothing found.</strong><span>Измени поисковый запрос или категорию.</span><button id="clear-filters" type="button">RESET FILTERS ↗</button></div>
+        <div class="endnote">100 INDEPENDENT MOTION STUDIES <span>© PiJS LAB / 2026</span></div>
+      </section>
+
+      <section class="player-pane" aria-label="Интерактивный просмотр">
+        <div class="player-shell">
+          <div class="player-top">
+            <div class="player-id"><span class="pulse-dot"></span><span>LIVE PLAYGROUND</span><span class="player-index" id="active-number">001 / 100</span></div>
+            <div class="player-actions">
+              <button type="button" id="prev-study" aria-label="Предыдущий пример" title="Предыдущий пример">←</button>
+              <button type="button" id="next-study" aria-label="Следующий пример" title="Следующий пример">→</button>
+              <button type="button" id="fullscreen" aria-label="Полноэкранный просмотр" title="Полноэкранный просмотр">⤢</button>
+            </div>
           </div>
           <div class="viewport" id="viewport">
-            <div class="render-decoration" aria-hidden="true"></div>
-            <div class="viewport-header">
-              <span class="viewport-index" id="viewport-index">01 / 07</span>
-              <span class="viewport-kind" id="viewport-kind">GPU PARTICLES</span>
-            </div>
-            <div class="viewport-caption">
-              <span class="caption-rule"></span>
-              <h2 id="scene-title">Particle Field</h2>
-              <p id="scene-description">Создано с помощью PixiJS.</p>
-            </div>
-            <div class="viewport-tip"><span class="tip-icon">↗</span><span id="scene-tip">Двигай курсором по сцене</span></div>
-            <div class="corner-bracket bracket-tl"></div><div class="corner-bracket bracket-tr"></div>
-            <div class="corner-bracket bracket-bl"></div><div class="corner-bracket bracket-br"></div>
-            <div class="loading-overlay" id="loading-overlay"><div class="loading-symbol"></div><span>INITIALIZING WEBGL</span></div>
-            <div class="error-overlay" id="error-overlay" hidden><strong>Не удалось запустить графику.</strong><span>Проверь поддержку WebGL и попробуй другой браузер.</span><button id="retry" type="button">Повторить</button></div>
+            <div class="viewport-art" aria-hidden="true"></div>
+            <div class="viewport-label" aria-hidden="true"><span>REAL-TIME CANVAS</span><span id="stage-category">TYPE / MOTION</span></div>
+            <div class="stage-caption" aria-hidden="true"><span class="caption-tick"></span><span id="stage-title">Elastic Baseline</span><small>MOVE POINTER TO INTERACT ↗</small></div>
+            <div id="stage-loading" class="stage-state"><span class="loader"></span><span>INITIALIZING WEBGL ENGINE</span></div>
+            <div id="stage-error" class="stage-error" hidden><strong>Не удалось запустить сцену.</strong><p id="error-details">Проверь поддержку WebGL.</p><button type="button" id="retry">RELOAD SCENE ↗</button></div>
           </div>
-          <div class="stage-footer">
-            <div class="stage-footer-left"><span class="tiny-indicator"></span><span id="stage-status">SCENE ACTIVE</span><span class="footer-separator">·</span><span id="pointer-status">MOVE POINTER TO INTERACT</span></div>
-            <div class="stage-footer-right"><span>PIXEL PERFECT IS A PROCESS</span><span class="footer-num">© PiJS LAB</span></div>
+          <div class="player-bottom">
+            <div class="live-status"><i></i><span id="render-status">LIVE / RENDERING</span></div>
+            <div class="stat-line">FPS <strong id="fps">—</strong><span class="stat-sep"></span> OBJECTS <strong id="objects">—</strong></div>
           </div>
-        </main>
-        <aside class="inspector" aria-label="Настройки сцены">
-          <div class="inspector-head"><div class="inspector-kicker">CONTROL PANEL</div><h2>Scene<br/>settings<span class="accent-text">.</span></h2><p>Настрой эффекты в реальном времени. Всё рендерится на твоём устройстве.</p></div>
-          <div class="control-group"><div class="control-label"><label for="intensity">INTENSITY</label><output id="intensity-value" for="intensity">65%</output></div><input id="intensity" type="range" min="0" max="100" value="65" step="1" /><div class="range-ends"><span>SOFT</span><span>MAX</span></div></div>
-          <div class="control-group"><div class="control-label"><span>ACCENT COLOR</span><span id="color-name" class="control-value">NEON GREEN</span></div><div class="swatches" role="group" aria-label="Выбор цвета"><button data-accent="green" class="swatch is-current" style="--swatch:#04e061" aria-label="Зелёный" aria-pressed="true"></button><button data-accent="blue" class="swatch" style="--swatch:#54abff" aria-label="Голубой" aria-pressed="false"></button><button data-accent="purple" class="swatch" style="--swatch:#b08cff" aria-label="Фиолетовый" aria-pressed="false"></button><button data-accent="coral" class="swatch" style="--swatch:#ff6d79" aria-label="Коралловый" aria-pressed="false"></button></div></div>
-          <div class="control-group"><div class="control-label"><span>ANIMATION</span><span id="motion-mode" class="control-value">ENABLED</span></div><div class="action-row"><button type="button" id="toggle-pause" class="primary-control"><span class="control-symbol" id="pause-symbol">Ⅱ</span><span id="pause-label">PAUSE SCENE</span></button><button type="button" id="reset-scene" class="secondary-control" title="Перезапустить сцену" aria-label="Перезапустить сцену">↺</button></div><button type="button" id="reduce-motion" class="toggle-row" aria-pressed="false"><span>Reduced motion</span><span class="toggle-track"><i></i></span></button></div>
-          <div class="inspector-spacer"></div>
-          <div class="telemetry"><div class="telemetry-title"><span>LIVE TELEMETRY</span><span class="telemetry-dots">•••</span></div><div class="telemetry-grid"><div class="telemetry-item"><strong id="fps-value">—</strong><span>FPS</span></div><div class="telemetry-item"><strong id="object-value">—</strong><span>OBJECTS</span></div><div class="telemetry-item"><strong id="renderer-value">—</strong><span>RENDERER</span></div><div class="telemetry-item"><strong id="resolution-value">—</strong><span>DPR</span></div></div></div>
-          <div class="shortcuts">KEYBOARD <span>← →</span> TO SWITCH <span>SPACE</span> TO PAUSE</div>
-        </aside>
-      </div>
-      <div class="mobile-credits">Built on PixiJS 8.22.0 · MIT License · <a href="https://github.com/pixijs/pixijs" target="_blank" rel="noopener noreferrer">Original project ↗</a></div>
+        </div>
+
+        <div class="details">
+          <div class="detail-eyebrow"><span id="detail-category">KINETIC TYPE</span><span id="detail-count">01 / 100</span></div>
+          <h2 id="detail-title">Elastic Baseline</h2>
+          <p id="detail-description">Live GPU motion study.</p>
+          <div class="detail-hint"><span class="hint-dot">✦</span><span id="detail-tip">Move the pointer</span></div>
+          <div class="details-actions">
+            <button id="copy-url" type="button" title="Скопировать ссылку на пример">↗ SHARE STUDY</button>
+            <button id="export-png" type="button" title="Сохранить текущий кадр в PNG">⇩ SAVE PNG</button>
+          </div>
+          <div class="details-ref">VISUAL RESEARCH <a id="reference-link" target="_blank" rel="noopener noreferrer" href="https://www.awwwards.com/">AWWWARD INSPIRED ↗</a></div>
+        </div>
+
+        <div class="controls">
+          <div class="control-heading"><span>PLAYGROUND CONTROLS</span><span>ADJUST / EXPERIMENT</span></div>
+          <div class="control-row">
+            <label for="intensity">ENERGY <output id="intensity-value" for="intensity">68%</output></label>
+            <input id="intensity" type="range" min="0" max="100" value="68" step="1"/>
+          </div>
+          <div class="control-row swatch-row">
+            <span>COLOR SYSTEM</span>
+            <div class="swatches" role="group" aria-label="Цвет эффекта">
+              <button class="swatch is-current" data-color="original" style="--swatch:#d9f56e" title="Original" aria-label="Цвет категории" aria-pressed="true"></button>
+              <button class="swatch" data-color="lime" style="--swatch:#d9f56e" title="Lime" aria-label="Лайм" aria-pressed="false"></button>
+              <button class="swatch" data-color="blue" style="--swatch:#80a9ff" title="Blue" aria-label="Синий" aria-pressed="false"></button>
+              <button class="swatch" data-color="orange" style="--swatch:#ff8d60" title="Orange" aria-label="Оранжевый" aria-pressed="false"></button>
+              <button class="swatch" data-color="lavender" style="--swatch:#bb98ff" title="Lavender" aria-label="Фиолетовый" aria-pressed="false"></button>
+              <button class="swatch" data-color="ice" style="--swatch:#f6f4ec" title="Mono" aria-label="Монохромный" aria-pressed="false"></button>
+            </div>
+          </div>
+          <div class="control-actions">
+            <button id="pause" type="button"><span id="pause-icon">Ⅱ</span><span id="pause-label">PAUSE</span></button>
+            <button id="restart" type="button" title="Перезапустить сцену"><span>↻</span> RESET</button>
+            <button id="reduced-motion" type="button" aria-pressed="false" title="Уменьшенная анимация"><span>◌</span> REDUCE MOTION</button>
+          </div>
+          <div class="shortcut-note">SHORTCUTS <kbd>←</kbd> <kbd>→</kbd> SWITCH <kbd>SPACE</kbd> PAUSE <kbd>R</kbd> REPLAY <kbd>/</kbd> SEARCH</div>
+        </div>
+      </section>
     </div>
-  </body>
+  </main>
+  <footer class="page-footer"><span>PiJS / A COMMUNITY-FRIENDLY MOTION STUDIES PROJECT</span><span>INDEPENDENT EXPERIMENTS. NOT OFFICIAL AWWWARD REPRODUCTIONS.</span><a href="https://github.com/pixijs/pixijs/blob/dev/LICENSE" target="_blank" rel="noopener noreferrer">MIT LICENSE ↗</a></footer>
+  <div id="toast" role="status" aria-live="polite" class="toast" hidden>Link copied</div>
+</div>
+</body>
 </html>
