@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#101113" />
+    <meta name="description" content="Интерактивная лаборатория графики PiJS на основе PixiJS 8: WebGL-сцены, частицы, текст, геометрия и эффекты." />
+    <link rel="icon" type="image/svg+xml" href="/PiJS/icon.svg" />
+    <title>PiJS — Interactive Graphics Lab</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="topbar">
+        <div class="topbar-brand">
+          <div class="brand-mark" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+          <span class="brand-wordmark">PiJS<span class="brand-dot">.</span></span>
+          <span class="brand-divider"></span>
+          <span class="brand-descriptor">Graphics Lab</span>
+        </div>
+        <nav class="topbar-actions" aria-label="Внешние ресурсы">
+          <a href="https://github.com/IMONsergey/PiJS" target="_blank" rel="noopener noreferrer">Source <span aria-hidden="true">↗</span></a>
+          <a href="https://pixijs.com/8.x/guides" target="_blank" rel="noopener noreferrer">Documentation <span aria-hidden="true">↗</span></a>
+          <span class="version-chip">8.22.0</span>
+        </nav>
+      </header>
+      <div class="workspace">
+        <aside class="sidebar" aria-label="Каталог сцен">
+          <div class="sidebar-intro">
+            <div class="eyebrow"><span class="status-dot"></span> INTERACTIVE ENGINE / 01</div>
+            <h1>Explore<br /><em>the canvas.</em></h1>
+            <p>Живая лаборатория возможностей PixiJS. Выбирай сцену и взаимодействуй с графикой.</p>
+          </div>
+          <div class="section-label"><span>EXPERIMENTS</span><span>07</span></div>
+          <div id="scene-list" class="scene-list" role="list"></div>
+          <div class="sidebar-bottom">
+            <span class="runtime-dot"></span>
+            <span>WEBGL / REAL-TIME</span>
+          </div>
+        </aside>
+        <main class="stage-main">
+          <div class="stage-header">
+            <div class="stage-context"><span class="muted">PLAYGROUND</span><span class="separator">/</span><span id="breadcrumb">Particle Field</span></div>
+            <div class="header-right"><span class="live-indicator"><i></i> LIVE RENDER</span><button type="button" class="icon-action" id="fullscreen" aria-label="Полноэкранный режим" title="Полноэкранный режим">⤢</button></div>
+          </div>
+          <div class="viewport" id="viewport">
+            <div class="render-decoration" aria-hidden="true"></div>
+            <div class="viewport-header">
+              <span class="viewport-index" id="viewport-index">01 / 07</span>
+              <span class="viewport-kind" id="viewport-kind">GPU PARTICLES</span>
+            </div>
+            <div class="viewport-caption">
+              <span class="caption-rule"></span>
+              <h2 id="scene-title">Particle Field</h2>
+              <p id="scene-description">Создано с помощью PixiJS.</p>
+            </div>
+            <div class="viewport-tip"><span class="tip-icon">↗</span><span id="scene-tip">Двигай курсором по сцене</span></div>
+            <div class="corner-bracket bracket-tl"></div><div class="corner-bracket bracket-tr"></div>
+            <div class="corner-bracket bracket-bl"></div><div class="corner-bracket bracket-br"></div>
+            <div class="loading-overlay" id="loading-overlay"><div class="loading-symbol"></div><span>INITIALIZING WEBGL</span></div>
+            <div class="error-overlay" id="error-overlay" hidden><strong>Не удалось запустить графику.</strong><span>Проверь поддержку WebGL и попробуй другой браузер.</span><button id="retry" type="button">Повторить</button></div>
+          </div>
+          <div class="stage-footer">
+            <div class="stage-footer-left"><span class="tiny-indicator"></span><span id="stage-status">SCENE ACTIVE</span><span class="footer-separator">·</span><span id="pointer-status">MOVE POINTER TO INTERACT</span></div>
+            <div class="stage-footer-right"><span>PIXEL PERFECT IS A PROCESS</span><span class="footer-num">© PiJS LAB</span></div>
+          </div>
+        </main>
+        <aside class="inspector" aria-label="Настройки сцены">
+          <div class="inspector-head"><div class="inspector-kicker">CONTROL PANEL</div><h2>Scene<br/>settings<span class="accent-text">.</span></h2><p>Настрой эффекты в реальном времени. Всё рендерится на твоём устройстве.</p></div>
+          <div class="control-group"><div class="control-label"><label for="intensity">INTENSITY</label><output id="intensity-value" for="intensity">65%</output></div><input id="intensity" type="range" min="0" max="100" value="65" step="1" /><div class="range-ends"><span>SOFT</span><span>MAX</span></div></div>
+          <div class="control-group"><div class="control-label"><span>ACCENT COLOR</span><span id="color-name" class="control-value">NEON GREEN</span></div><div class="swatches" role="group" aria-label="Выбор цвета"><button data-accent="green" class="swatch is-current" style="--swatch:#04e061" aria-label="Зелёный" aria-pressed="true"></button><button data-accent="blue" class="swatch" style="--swatch:#54abff" aria-label="Голубой" aria-pressed="false"></button><button data-accent="purple" class="swatch" style="--swatch:#b08cff" aria-label="Фиолетовый" aria-pressed="false"></button><button data-accent="coral" class="swatch" style="--swatch:#ff6d79" aria-label="Коралловый" aria-pressed="false"></button></div></div>
+          <div class="control-group"><div class="control-label"><span>ANIMATION</span><span id="motion-mode" class="control-value">ENABLED</span></div><div class="action-row"><button type="button" id="toggle-pause" class="primary-control"><span class="control-symbol" id="pause-symbol">Ⅱ</span><span id="pause-label">PAUSE SCENE</span></button><button type="button" id="reset-scene" class="secondary-control" title="Перезапустить сцену" aria-label="Перезапустить сцену">↺</button></div><button type="button" id="reduce-motion" class="toggle-row" aria-pressed="false"><span>Reduced motion</span><span class="toggle-track"><i></i></span></button></div>
+          <div class="inspector-spacer"></div>
+          <div class="telemetry"><div class="telemetry-title"><span>LIVE TELEMETRY</span><span class="telemetry-dots">•••</span></div><div class="telemetry-grid"><div class="telemetry-item"><strong id="fps-value">—</strong><span>FPS</span></div><div class="telemetry-item"><strong id="object-value">—</strong><span>OBJECTS</span></div><div class="telemetry-item"><strong id="renderer-value">—</strong><span>RENDERER</span></div><div class="telemetry-item"><strong id="resolution-value">—</strong><span>DPR</span></div></div></div>
+          <div class="shortcuts">KEYBOARD <span>← →</span> TO SWITCH <span>SPACE</span> TO PAUSE</div>
+        </aside>
+      </div>
+      <div class="mobile-credits">Built on PixiJS 8.22.0 · MIT License · <a href="https://github.com/pixijs/pixijs" target="_blank" rel="noopener noreferrer">Original project ↗</a></div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
