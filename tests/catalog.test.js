@@ -1,37 +1,31 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { catalog, collections, findStudy } from '../src/data.js';
-import { buildsA } from '../src/effects-a.js';
-import { buildsB } from '../src/effects-b.js';
-import { buildsC } from '../src/effects-c.js';
+import {categories,catalog,getItem,asset} from '../src/library/catalog.js';
+import {componentMarkup} from '../src/library/components.js';
 
-test('exactly 100 studies, unique identifiers and titles', () => {
-  assert.equal(catalog.length,100);
-  assert.equal(new Set(catalog.map(s=>s.id)).size,100);
-  assert.equal(new Set(catalog.map(s=>s.title)).size,100);
-  assert.equal(catalog[0].id,'study-001');
-  assert.equal(catalog.at(-1).id,'study-100');
+test('exactly 36 original components in six complete, nonempty categories',()=>{
+ assert.equal(catalog.length,36);
+ assert.equal(categories.length,7);
+ assert.equal(new Set(catalog.map(x=>x.id)).size,36);
+ assert.equal(new Set(catalog.map(x=>x.title)).size,36);
+ const required=['buttons','cards','typography','galleries','backgrounds','interfaces'];
+ for(const cat of required)assert.equal(catalog.filter(x=>x.category===cat).length,6);
 });
-test('10 categories, 10 studies per category, 20 builders', () => {
-  assert.equal(collections.length,10);
-  const engines={...buildsA,...buildsB,...buildsC};
-  assert.equal(Object.keys(engines).length,20);
-  for(const coll of collections) {
-    const studies=catalog.filter(s=>s.category===coll.key);
-    assert.equal(studies.length,10);
-    assert.equal(coll.families.length,2);
-    for(const s of studies) {
-      assert.equal(typeof engines[s.family],'function');
-      assert.ok(s.variant>=0&&s.variant<=4);
-    }
-  }
+test('every component produces a real, semantic visual and correct identity',()=>{
+ for(const item of catalog){
+   const html=componentMarkup(item);
+   assert.ok(html.includes('data-component="'+item.id+'"'),item.id);
+   assert.ok(html.length>150,item.id);
+   assert.ok(!html.includes('Component unavailable'),item.id);
+   assert.ok(item.description.length>25);
+   assert.ok(item.interaction.length>3);
+   assert.ok(['stone','ink'].includes(item.tone));
+ }
 });
-test('links, summaries and find behavior', () => {
-  for(const s of catalog) {
-    assert.match(s.reference.url,/^https:\/\/www\.awwwards\.com\/sites\//);
-    assert.ok(s.summary.length>20);
-    assert.ok(s.tip.length>20);
-  }
-  assert.equal(findStudy('study-050').number,50);
-  assert.equal(findStudy('unknown').number,1);
+test('all sample images are local and all components use declared GPU presets',()=>{
+ const accepted=new Set(['beam','rays','liquid','halo','orbit','orbital','grid','dust','graph','shader:0','shader:1','shader:2','shader:3']);
+ for(const item of catalog)assert.ok(accepted.has(item.gpu),item.id);
+ for(let i=0;i<8;i++)assert.match(asset(i),/^\/PiJS\/media\/photo-[a-zA-Z0-9-]+\.jpg$/);
+ assert.equal(getItem('depth-gallery').title,'Depth Gallery');
+ assert.equal(getItem('nonexistent'),catalog[0]);
 });

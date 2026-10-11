@@ -1,79 +1,81 @@
-# PiJS Motion Library — 100 Interactive Studies
+# PiJS Motion Library
 
-100 original interactive motion studies, organized into 10 collections, inspired by the visual interaction language seen across Awwwards sites from October 2025 to October 2026.
+A curated library of original, production-minded interactive UI motion studies, built on **PixiJS 8.22.0**, native HTML/CSS, and Vite.
 
-**[Open live library](https://imonsergey.github.io/PiJS/)** · [Source branch](https://github.com/IMONsergey/PiJS/tree/feat/awwwards-100-lab) · [Original PixiJS](https://github.com/pixijs/pixijs)
+**Live:** https://imonsergey.github.io/PiJS/
+**Source branch:** feat/curated-motion-components-v3
+**Original PixiJS engine:** unchanged in branch dev
+**Early archive (100 experiments):** feat/awwwards-100-lab
 
-## Interface / October 2026
+## Why the catalog was rebuilt
 
-The public gallery was simplified using the published [APCOSYS Components Library](https://imonsergey.github.io/Apco-components-lib/) as the visual reference:
+The original 100 experiments were primarily broad shader/particle variations. They weren't useful reusable website components. This v3 replaces that collection with **36 individually authored UI examples** across six categories, each with a working real-world interface:
 
-- Semantic surface, border, ink and turquoise action tokens; Instrument Sans and IBM Plex Mono.
-- Compact 64px header, 248px sidebar, search, clean cards and mobile navigation.
-- Full-page catalog first, native modal preview on click; optional advanced controls hidden by default.
-- Light theme by default with a persistent dark theme; favorites, links, navigation, intensity, palette and PNG export retained.
-- Lightweight initial load: PixiJS and all WebGL rendering code are lazy-loaded only when opening a live animation, and the renderer stops when the modal closes.
-- Fonts are referenced at the owner's existing public Components Library URL; native sans/mono fallbacks apply when unavailable. No font binaries are duplicated.
+- **Buttons & actions (6):** edge-lit CTA, magnetic button, glass pill, split action, orbit button, light sweep.
+- **Cards & surfaces (6):** spotlight card, depth portrait, glass editorial, project reveal, pricing dial, metrics.
+- **Typography (6):** masked image headline, elastic letters, metallic type, split reveal, decoding, number drum.
+- **Galleries (6):** perspective gallery, draggable image rail, aperture reveal, editorial grid, stack, filmstrip.
+- **Hero backgrounds (6):** aurora, silk, light rails, contours, particles, grid.
+- **Micro-interactions (6):** file-drop surface, progress orbit, command search, toggle, live chart, toast stack.
 
-The 100 original effect definitions in src/data.js, src/effects-*.js and src/engine.js are unchanged by this UX-only redesign.
+The old 100-study implementation remains in the archive branch. **36 handcrafted components are better than 100 superficial renamings.** Further components should be added only if they introduce genuinely new behavior.
+
+## Layout
+
+A three-part, no-dialog working environment:
+1. Persistent category navigation on the left.
+2. Compact, visually representative catalog cards in the middle.
+3. Live interactive playback, controls and usage instructions on the right.
+
+On mobile, the viewer moves above the card grid and navigation becomes a drawer. Every preview is selectable without navigating away or opening a modal.
+
+UI surface tokens reuse the visual language of the owner's [APCOSYS Components Library](https://imonsergey.github.io/Apco-components-lib/). Instrument Sans and IBM Plex Mono are loaded from that publicly hosted library; browser sans/mono fallbacks remain available.
 
 ## Architecture
 
-- **100 studies**, 10 collections, 20 independent scene-builder families with five distinct variants per family.
-- PixiJS **8.22.0**, WebGL renderer, Vite. No paid libraries, copied scripts, downloaded brand visuals or third-party imagery.
-- **One active PixiJS Application** and one live scene at any time; GPU objects, textures and filters are destroyed on scene change.
-- Static illustrative Canvas2D thumbnails are generated deterministically, lazily with IntersectionObserver.
-- Palette overrides, adjustable motion intensity, pause, restart, fullscreen, favorites (localStorage), category filtering, fast search, random study, deep links and PNG extraction.
-- Reduced motion preferences supported; frame-rate cap and DPR ceiling; mobile/touch interaction.
-- Playable scene deep links: /#study-001 through /#study-100.
+- src/app-v3.js — navigation, filtering, favorites, selection, scene lifecycle, controls and deep links.
+- src/library/catalog.js — one typed-like metadata record per actual component.
+- src/library/components.js — accessible, responsive HTML layouts (36 distinct compositions).
+- src/library/interactions.js — real pointer, click, keyboard, gallery, upload, search and chart interactions.
+- src/library/gpu.js — one PixiJS WebGL Application, dynamically imported and reused, shaders plus procedural light and particle effects.
+- src/library/shell.css — restrained responsive documentation/library shell.
+- src/library/components.css — independently styled components and motion scenes.
+- public/media/ — 8 locally served, resized photographic assets.
 
-## 10 collections
+PixiJS is kept off thumbnail cards to avoid 36 simultaneous WebGL contexts. Thumbnails contain **the same component HTML as the live stage**, rendered statically and marked inert so they cannot intercept keyboard or screen reader navigation. The live stage uses PixiJS for background, lighting and procedural animation; functional buttons, forms and accessible semantics remain HTML.
 
-| Collection | Entries | Builders |
-|---|---:|---|
-| Kinetic type | 001–010 | typeWave, typeOrbit |
-| Fluid & shaders | 011–020 | liquidLines, shaderArt |
-| Particles | 021–030 | particleDepth, particleMorph |
-| Pointer | 031–040 | cursorMagnet, cursorTrail |
-| Generative geometry | 041–050 | lineArt, geometryArt |
-| Editorial galleries | 051–060 | posterGallery, tileGallery |
-| Mask & reveals | 061–070 | maskReveal, transition |
-| Spatial depth | 071–080 | meshDepth, spaceField |
-| Data & audio visualizations | 081–090 | dataFlow, spectrum |
-| Experimental playground | 091–100 | physics, abstract |
+## Running
 
-This catalog contains **100 distinct studies**, not 100 independent render engines. Each family shares low-level primitives but implements five different visual behaviors. Awwwards links are **research/inspiration references only**; examples are not claims of accurate reproductions, direct collaborations or awards.
+Requires Node 22+.
 
-### Representative research references
+~~~sh
+npm ci
+npm run dev
+npm test
+npm run build
+~~~
 
-- [Floema](https://www.awwwards.com/sites/floema) — Awwwards Site of the Day, May 2026; interactive material, scroll-zoom and WebGL storytelling.
-- [The Monolith Project](https://www.awwwards.com/sites/the-monolith-project) — spatial/infinite-canvas inspiration, autumn 2025.
-- [Oryzo AI](https://www.awwwards.com/sites/oryzo-ai) — interaction, 3D–2D transitions and particle-led narrative, 2026.
-- [Indigo Laboratory](https://www.awwwards.com/sites/indigo-laboratory) — shader and audio narrative inspiration.
-- [21 Hrs on the Moon](https://www.awwwards.com/sites/21-hrs-on-the-moon), [MindMarket](https://www.awwwards.com/sites/mindmarket), [Vectr](https://www.awwwards.com/sites/vectr), [Julien Calot](https://www.awwwards.com/sites/julien-calot).
+The Vite base path is /PiJS/ for GitHub Pages. Generated dist files publish to the gh-pages branch. Do not merge this library into the upstream engine dev branch.
 
-## Development
+## Limitations
 
-Requires recent Node.js (the test/build environment used Node 24).
+- File upload is a **local interaction demo**, with MIME/size validation and simulated progress. It does not upload to a server.
+- The pricing, revenue metric, search-command data and charts contain **sample values**, not connected business data.
+- Background shaders use PixiJS and WebGL. If GPU rendering is unavailable, the HTML interface continues to function and a fallback notice appears.
+- "Usage" demonstrates how to import these **source files together** into an existing project; it is not a single-file React/Framer export.
 
-    npm ci
-    npm run dev
-    npm run test
-    npm run build
+## Visual research, not copies
 
-Dev server: http://127.0.0.1:5173/PiJS/ (Vite base is /PiJS/ for GitHub Pages).
+The library design was researched against OriginKit, ThreeUI, HorizonX, OpenSourceUI, BoardUI, Light Rails and Bklit. Those websites' component source code and proprietary assets were **not imported or copied**.
 
-## Browser stress diagnostics
+Original photographs downloaded as appropriately resized static files from images.unsplash.com, subject to the [Unsplash License](https://unsplash.com/license) (commercial use permitted, but standalone photo resale restrictions apply). Photo IDs:
+- photo-1600607687939-ce8a6c25118c
+- photo-1497366754035-f200968a6e72
+- photo-1519608487953-e999c86e7455
+- photo-1441974231531-c6227db76b6e
+- photo-1518837695005-2083093ee35b
+- photo-1470770841072-f978cf4d019e
+- photo-1464822759023-fed622ff2c3b
+- photo-1540959733332-eab4deabeeaf
 
-Open the dev build with ?smoke=1, then inspect window.__PIJS_SMOKE_RESULT__. The built-in check repeatedly creates/destroys all 100 scenes and runs one update for each. This is an initialization smoke test, **not** a pixel/interaction validation for every scene.
-
-## Publishing
-
-- **PixiJS original mirror**: preserved unchanged under branch dev.
-- **Motion Atlas source**: feat/awwwards-100-lab.
-- **GitHub Pages**: compiled static build on gh-pages (do not merge the gallery into dev).
-- Imported PixiJS upstream automation workflows are disabled in this mirror to avoid unintended CI/CD publication.
-
-## License and attribution
-
-PixiJS is available under MIT. Original upstream copyright notices and the LICENSE file remain intact in dev. The motion-study code is an independent implementation. Referenced Awwwards projects remain the intellectual property of their respective creators; no brand imagery or source code was copied.
+PixiJS is MIT licensed. Its original license and history are preserved in dev; any downstream distribution using PixiJS must retain its required notice.

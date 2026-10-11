@@ -1,13 +1,13 @@
 {
-  "name": "pijs-motion-atlas",
-  "version": "2.0.0",
+  "name": "pijs-motion-library",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
+    "test": "node --test",
     "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "test": "node --test"
+    "preview": "vite preview --host 127.0.0.1"
   },
   "dependencies": {
     "pixi.js": "8.22.0"
