@@ -1,348 +1,499 @@
-import { Application } from 'pixi.js';
 import { catalog, collections, findStudy } from './data.js';
-import { createStudy } from './engine.js';
 import { paintThumb } from './thumbs.js';
 import './style.css';
 
-const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
-const gallery=$('#gallery'),viewport=$('#viewport'),player=$('.player-pane'),params=new URLSearchParams(location.search);
-const palette={lime:'#d9f56e',blue:'#80a9ff',orange:'#ff8d60',lavender:'#bb98ff',ice:'#f6f4ec'};
-const matchReduced=window.matchMedia('(prefers-reduced-motion: reduce)');
-const state={
-  chosen:findStudy(location.hash.replace('#','') || params.get('scene')),
-  filter:'ALL',query:'',favoritesOnly:false,favorites:new Set(),
-  color:'original',power:.68,paused:false,reduced:matchReduced.matches,
-  app:null,active:null,ready:false,loading:false,lastMouse:false
+const $ = selector => document.querySelector(selector);
+const $$ = selector => [...document.querySelectorAll(selector)];
+const gallery = $('#gallery');
+const dialog = $('#study-dialog');
+const viewport = $('#viewport');
+const root = $('.app');
+const search = $('#search');
+const nav = $('#category-nav');
+const reducedMedia = matchMedia('(prefers-reduced-motion: reduce)');
+const accentColors = { lime:'#d9f56e', blue:'#80a9ff', orange:'#ff8d60', lavender:'#bb98ff', ice:'#f6f4ec' };
+const cards = new Map();
+const pointer = { x:0,y:0,nx:0,ny:0,inside:false };
+const state = {
+  category: 'ALL',
+  query: '',
+  favoritesOnly: false,
+  favorites: new Set(),
+  selected: findStudy(location.hash.substring(1)),
+  color: 'original',
+  intensity: .68,
+  reduced: reducedMedia.matches,
+  paused: false,
+  app: null,
+  scene: null,
+  createStudy: null,
 };
-const pointer={x:0,y:0,nx:0,ny:0,inside:false};
-const cards=new Map();
-let observer=null, statsTimer=0,toastTimeout=0,selectSerial=0,ro=null;
+let cardObserver, resizeObserver, initPromise, tickElapsed = 0, sceneSerial = 0;
+let originFocus = null, toastTimer = 0;
 
-try {
-  state.favorites=new Set(JSON.parse(localStorage.getItem('pijs_motion_favorites_v1')||'[]'));
-} catch(error) {console.debug('Local favorites unavailable',error);}
-const toHex=str=>parseInt(str.slice(1),16);
+const readStorage = key => { try{return localStorage.getItem(key);}catch{return null;} };
+const saveStorage = (key,value) => { try{localStorage.setItem(key,value);}catch{} };
+try { state.favorites = new Set(JSON.parse(readStorage('pijs_motion_favorites_v1')||'[]')); } catch { state.favorites = new Set(); }
+document.documentElement.dataset.theme = readStorage('pijs_library_theme') === 'dark' ? 'dark' : 'light';
+document.querySelector('meta[name="theme-color"]').content = document.documentElement.dataset.theme==='dark'?'#0d1113':'#f6f6f6';
 
 function toast(message) {
-  const el=$('#toast');el.textContent=message;el.hidden=false;
-  clearTimeout(toastTimeout);
-  toastTimeout=setTimeout(()=>{el.hidden=true;},1750);
+  const element = $('#toast');
+  element.textContent = message;
+  element.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => element.hidden = true, 1700);
 }
 
-function createCard(entry) {
-  const card=document.createElement('article');
-  card.className='study-card';card.dataset.id=entry.id;
-  card.dataset.category=entry.category;
-  const open=document.createElement('button');
-  open.className='study-open';open.type='button';
-  open.setAttribute('aria-label',entry.number+' — '+entry.title+', '+entry.categoryLabel);
-  const thumb=document.createElement('div');thumb.className='thumb';
-  const canvas=document.createElement('canvas');canvas.setAttribute('aria-hidden','true');
-  const num=document.createElement('span');num.className='thumb-number';num.textContent=String(entry.number).padStart(3,'0');
-  thumb.append(canvas,num);
-  const body=document.createElement('div');body.className='card-body';
-  const category=document.createElement('div');category.className='card-tag';category.textContent=entry.categoryLabel.toUpperCase();
-  const title=document.createElement('div');title.className='card-title';title.textContent=entry.title;
-  body.append(category,title);
-  const arrow=document.createElement('span');arrow.className='card-arrow';arrow.textContent='↗';
-  open.append(thumb,body,arrow);
-  const fav=document.createElement('button');
-  fav.type='button';fav.className='fave-toggle';fav.textContent=state.favorites.has(entry.id)?'★':'☆';
-  fav.setAttribute('aria-label','Избранное: '+entry.title);
-  fav.setAttribute('aria-pressed',String(state.favorites.has(entry.id)));
-  fav.classList.toggle('is-active',state.favorites.has(entry.id));
-  fav.addEventListener('click',()=>toggleFavorite(entry.id));
-  open.addEventListener('click',()=>select(entry.id,true));
-  card.append(open,fav);
-  cards.set(entry.id,{card,canvas,fav});
-  observer?.observe(card);
+function createNavItem(name, count, key, icon = '') {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'nav-item';
+  button.dataset.category = key;
+  const ico = document.createElement('span');
+  ico.className = 'nav-icon';
+  ico.setAttribute('aria-hidden','true');
+  ico.textContent = icon;
+  const label = document.createElement('span');
+  label.textContent = name;
+  const amount = document.createElement('span');
+  amount.className = 'nav-count';
+  amount.textContent = count;
+  button.append(ico,label,amount);
+  button.addEventListener('click', () => {
+    state.category = key;
+    state.favoritesOnly = false;
+    updateCatalog();
+    closeSidebar();
+    window.scrollTo({top:0,behavior:state.reduced?'instant':'smooth'});
+  });
+  return button;
+}
+function renderNav() {
+  nav.appendChild(createNavItem('All animations','100','ALL','▦'));
+  const label = document.createElement('div');
+  label.className = 'sidebar-group-label';
+  label.textContent = 'CATEGORIES';
+  nav.appendChild(label);
+  for (const group of collections) nav.appendChild(createNavItem(group.label==='Experimental playground'?'Experimental':group.label,'10',group.key));
+}
+function makeCard(study) {
+  const card = document.createElement('article');
+  card.className = 'motion-card';
+  card.dataset.id = study.id;
+  const header = document.createElement('div');
+  header.className = 'motion-card-head';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'motion-open';
+  open.setAttribute('aria-label', 'Открыть: ' + study.title);
+  const title = document.createElement('span');
+  title.textContent = study.title;
+  const arrow = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  arrow.setAttribute('viewBox','0 0 24 24');
+  arrow.setAttribute('aria-hidden','true');
+  arrow.innerHTML = '<path d="M5 12h14m-6-6 6 6-6 6"/>';
+  open.append(title,arrow);
+  open.addEventListener('click', () => openStudy(study.id, true));
+  const fav = document.createElement('button');
+  fav.className = 'favorite-button';
+  fav.type = 'button';
+  fav.title = 'Избранное';
+  fav.setAttribute('aria-label','Избранное: '+study.title);
+  fav.addEventListener('click', () => toggleFavorite(study.id));
+  header.append(open,fav);
+  const preview = document.createElement('div');
+  preview.className = 'motion-preview';
+  const previewButton = document.createElement('button');
+  previewButton.type = 'button';
+  previewButton.className = 'motion-preview-button';
+  previewButton.setAttribute('aria-label','Смотреть '+study.title);
+  const canvas = document.createElement('canvas');
+  canvas.setAttribute('aria-hidden','true');
+  previewButton.appendChild(canvas);
+  previewButton.addEventListener('click', () => openStudy(study.id, true));
+  preview.appendChild(previewButton);
+  const footer = document.createElement('div');
+  footer.className = 'motion-card-foot';
+  const category = document.createElement('span');
+  category.textContent = study.categoryLabel;
+  const index = document.createElement('span');
+  index.textContent = String(study.number).padStart(3,'0')+' / 100';
+  footer.append(category,index);
+  card.append(header,preview,footer);
+  cards.set(study.id, {card,canvas,fav});
+  syncFavoriteButton(study.id);
+  cardObserver?.observe(card);
   return card;
 }
-function makeCatalog() {
-  const fragment=document.createDocumentFragment();
-  for(const entry of catalog) fragment.appendChild(createCard(entry));
-  gallery.appendChild(fragment);
-  if(observer){for(const item of cards.values())observer.observe(item.card);}
-}
-
-function initThumbs() {
-  if('IntersectionObserver' in window) {
-    observer=new IntersectionObserver(entries=>{
-      for(const entry of entries)if(entry.isIntersecting){
-        const study=findStudy(entry.target.dataset.id);
-        const item=cards.get(study.id);
-        if(item && !item.canvas.dataset.drawn){
-          paintThumb(item.canvas,study);item.canvas.dataset.drawn='1';
+function initCatalog() {
+  renderNav();
+  if ('IntersectionObserver' in window) {
+    cardObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) if (entry.isIntersecting) {
+        const study = findStudy(entry.target.dataset.id);
+        const item = cards.get(study.id);
+        if (item && !item.canvas.dataset.painted) {
+          paintThumb(item.canvas,study);
+          item.canvas.dataset.painted='1';
         }
-        observer.unobserve(entry.target);
+        cardObserver.unobserve(entry.target);
       }
-    },{rootMargin:'350px'});
+    },{rootMargin:'300px'});
   }
+  const fragment = document.createDocumentFragment();
+  for (const study of catalog) fragment.appendChild(makeCard(study));
+  gallery.appendChild(fragment);
+  updateCatalog();
 }
-function updateCards() {
-  const q=state.query.toLocaleLowerCase('ru').trim();
-  let visible=0;
-  for(const entry of catalog){
-    const item=cards.get(entry.id);
-    const matches=state.filter==='ALL'||entry.category===state.filter;
-    const searched=!q||(entry.title+' '+entry.family+' '+entry.categoryLabel+' '+entry.category).toLowerCase().includes(q);
-    const fav=!state.favoritesOnly||state.favorites.has(entry.id);
-    const ok=matches&&searched&&fav;
-    item.card.hidden=!ok;
-    if(ok)visible++;
-    item.card.classList.toggle('is-current',state.chosen.id===entry.id);
-    if(ok&&!observer&&!item.canvas.dataset.drawn){paintThumb(item.canvas,entry);item.canvas.dataset.drawn='1';}
-  }
-  $('#visible-count').textContent=visible+' / 100';
-  $('#catalog-results').textContent=visible+' '+(visible===1?'STUDY':'STUDIES');
-  $('#empty-state').hidden=visible>0;
-  $('#favorites-count').textContent=String(state.favorites.size);
-  $('#favorites-filter').classList.toggle('is-active',state.favoritesOnly);
-  $('#favorites-filter').setAttribute('aria-pressed',String(state.favoritesOnly));
-  $$('.filter').forEach(b=>{
-    const selected=b.dataset.filter===state.filter;
-    b.classList.toggle('is-active',selected);
-    b.setAttribute('aria-pressed',String(selected));
-  });
-  if(observer){for(const item of cards.values())if(!item.card.hidden&&!item.canvas.dataset.drawn)observer.observe(item.card);}
-}
-
-function renderFilters() {
-  const box=$('#filters');
-  const filters=[{key:'ALL',label:'ALL',count:100},...collections.map(c=>({key:c.key,label:c.label,count:10}))];
-  for(const entry of filters){
-    const btn=document.createElement('button');
-    btn.className='filter';btn.type='button';btn.dataset.filter=entry.key;
-    btn.innerHTML=entry.label.toUpperCase()+' <span class="filter-count">'+entry.count+'</span>';
-    btn.addEventListener('click',()=>{state.filter=entry.key;updateCards();});
-    box.appendChild(btn);
-  }
-}
-function saveFavorites(){
-  try {localStorage.setItem('pijs_motion_favorites_v1',JSON.stringify([...state.favorites]));}
-  catch(error){console.debug('Favorites were not persisted',error);}
-}
-function toggleFavorite(id){
-  if(state.favorites.has(id))state.favorites.delete(id);else state.favorites.add(id);
-  const item=cards.get(id),on=state.favorites.has(id);
-  item.fav.classList.toggle('is-active',on);item.fav.textContent=on?'★':'☆';
+function syncFavoriteButton(id) {
+  const item = cards.get(id);
+  if (!item) return;
+  const on = state.favorites.has(id);
+  item.fav.textContent = on ? '★' : '☆';
   item.fav.setAttribute('aria-pressed',String(on));
-  saveFavorites();updateCards();
-  toast(on?'Added to favorites':'Removed from favorites');
+  if (state.selected.id === id) {
+    const button = $('#dialog-favorite');
+    button.textContent = on ? '★' : '☆';
+    button.setAttribute('aria-pressed',String(on));
+    button.setAttribute('aria-label',on?'Убрать из избранного':'Добавить в избранное');
+  }
 }
-function currentColor(){
-  return state.color==='original'?state.chosen.accent:palette[state.color];
+function toggleFavorite(id) {
+  if (state.favorites.has(id)) state.favorites.delete(id);
+  else state.favorites.add(id);
+  saveStorage('pijs_motion_favorites_v1',JSON.stringify([...state.favorites]));
+  syncFavoriteButton(id);
+  $('#favorites-count').textContent=String(state.favorites.size);
+  if (state.favoritesOnly) updateCatalog();
+  toast(state.favorites.has(id)?'Added to favorites':'Removed from favorites');
 }
-function refreshSwatches(){
-  const hex=currentColor();
-  document.documentElement.style.setProperty('--accent',hex);
-  document.querySelector('[data-color="original"]').style.setProperty('--swatch',state.chosen.accent);
-  $$('[data-color]').forEach(b=>{
-    const active=b.dataset.color===state.color;
-    b.classList.toggle('is-current',active);
-    b.setAttribute('aria-pressed',String(active));
+function updateCatalog() {
+  const q=state.query.trim().toLowerCase();
+  let count=0;
+  for (const study of catalog) {
+    const item=cards.get(study.id);
+    const byCategory=state.category==='ALL'||study.category===state.category;
+    const byQuery=!q||[study.title,study.categoryLabel,study.category,study.family,String(study.number)].join(' ').toLowerCase().includes(q);
+    const byFav=!state.favoritesOnly||state.favorites.has(study.id);
+    const visible=byCategory&&byQuery&&byFav;
+    item.card.hidden=!visible;
+    if (visible) {
+      count++;
+      if (!cardObserver&&!item.canvas.dataset.painted) {
+        paintThumb(item.canvas,study);
+        item.canvas.dataset.painted='1';
+      } else if(cardObserver&&!item.canvas.dataset.painted) {
+        cardObserver.observe(item.card);
+      }
+    }
+  }
+  const name=state.favoritesOnly?'Favorites':
+    state.category==='ALL'?'All animations':collections.find(c=>c.key===state.category)?.label||'All animations';
+  $('#section-title').textContent=name;
+  $('#visible-count').textContent=count+' '+(count===1?'animation':'animations');
+  $('#empty-state').hidden=count!==0;
+  $('#favorites-count').textContent=String(state.favorites.size);
+  $('#favorites-nav').classList.toggle('is-active',state.favoritesOnly);
+  $$('.nav-item[data-category]').forEach(btn => {
+    const active = !state.favoritesOnly&&btn.dataset.category===state.category;
+    btn.classList.toggle('is-active',active);
+    btn.setAttribute('aria-current',active?'page':'false');
   });
 }
-
-function updateLabels(){
-  const study=state.chosen;
-  $('#active-number').textContent=String(study.number).padStart(3,'0')+' / 100';
-  $('#stage-category').textContent=study.category+' / MOTION';
-  $('#stage-title').textContent=study.title.toUpperCase();
-  $('#detail-title').textContent=study.title;
-  $('#detail-category').textContent=study.categoryLabel.toUpperCase();
-  $('#detail-count').textContent=String(study.number).padStart(2,'0')+' / 100';
-  $('#detail-description').textContent=study.summary;
+function closeSidebar() {
+  document.body.classList.remove('nav-open');
+  $('#menu-toggle').setAttribute('aria-expanded','false');
+  $('#sidebar-shade').hidden=true;
+}
+function toggleSidebar() {
+  const open=document.body.classList.toggle('nav-open');
+  $('#menu-toggle').setAttribute('aria-expanded',String(open));
+  $('#sidebar-shade').hidden=!open;
+}
+function selectedAccent() {
+  return state.color==='original'?state.selected.accent:accentColors[state.color];
+}
+function updateSwatches() {
+  const origin=$('[data-color="original"]');
+  origin.style.setProperty('--swatch',state.selected.accent);
+  $$('[data-color]').forEach(button=>{
+    const current=button.dataset.color===state.color;
+    button.classList.toggle('is-current',current);
+    button.setAttribute('aria-pressed',String(current));
+  });
+}
+function updateDialogLabels() {
+  const study=state.selected;
+  $('#dialog-number').textContent=String(study.number).padStart(2,'0')+' / 100';
+  $('#dialog-category').textContent=study.categoryLabel;
+  $('#dialog-title').textContent=study.title;
   $('#detail-tip').textContent=study.tip;
-  $('#reference-link').textContent=study.reference.label.toUpperCase()+' ↗';
+  $('#reference-link').textContent='Inspiration: '+study.reference.label+' ↗';
   $('#reference-link').href=study.reference.url;
-  document.title=study.title+' — PiJS Motion Atlas / 100';
-  refreshSwatches();
+  document.title=study.title+' — PiJS Motion library';
+  updateSwatches();
+  syncFavoriteButton(study.id);
 }
-function setPause(paused) {
-  state.paused=paused;
-  $('#pause-label').textContent=paused?'RESUME':'PAUSE';
-  $('#pause-icon').textContent=paused?'▶':'Ⅱ';
-  $('#render-status').textContent=paused?'PAUSED / STANDBY':state.reduced?'LIVE / REDUCED MOTION':'LIVE / RENDERING';
-  if(state.app){if(paused||document.hidden)state.app.stop();else state.app.start();}
+function updateHash(id,mode) {
+  const url=new URL(location.href);
+  url.hash=id?'#'+id:'';
+  if(mode==='push')history.pushState({pijsStudy:id},'',url.pathname+url.search+url.hash);
+  else history.replaceState({pijsStudy:id},'',url.pathname+url.search+url.hash);
 }
-function select(id,fromClick=false) {
-  const next=catalog.find(s=>s.id===id);
-  if(!next)return false;
-  ++selectSerial;
-  state.chosen=next;updateLabels();updateCards();
-  const url=new URL(location.href);url.hash=next.id;
-  history.replaceState(null,'',url.pathname+url.search+url.hash);
-  if(!state.ready)return true;
-  try {
-    state.active?.destroy();
-    state.active=null;
-    state.active=createStudy(state.app,next,toHex(currentColor()));
-    state.active.resize(state.app.screen.width,state.app.screen.height);
-    $('#objects').textContent=new Intl.NumberFormat('en-US').format(state.active.count);
-    $('#stage-error').hidden=true;$('#stage-loading').classList.add('is-hidden');
-    if(state.paused)setPause(false);
-    if(fromClick&&window.matchMedia('(max-width:1000px)').matches){
-      player.scrollIntoView({block:'start',behavior:state.reduced?'instant':'smooth'});
-    }
-  } catch(error){
-    console.error('Study error:',next.id,error);
-    state.active=null;
-    $('#stage-loading').classList.add('is-hidden');
-    $('#stage-error').hidden=false;
-    $('#error-details').textContent=String(error?.message||error);
+function openStudy(id,pushToHistory=false) {
+  const study=catalog.find(item=>item.id===id);
+  if (!study) return;
+  const wasOpen=dialog.open;
+  if (!wasOpen) {
+    originFocus=pushToHistory?document.activeElement:null;
+    dialog.showModal();
+    state.paused=false;
   }
-  return true;
+  state.selected=study;
+  updateDialogLabels();
+  if(pushToHistory) updateHash(id,wasOpen?'replace':'push');
+  const token=++sceneSerial;
+  void renderStudy(token);
 }
-function step(direction){
-  const current=catalog.findIndex(x=>x.id===state.chosen.id);
-  select(catalog[(current+direction+catalog.length)%catalog.length].id);
+async function ensureApp() {
+  if (state.app) return state.app;
+  if (initPromise) return initPromise;
+  initPromise=(async()=>{
+    const {Application,createStudy}=await import('./runtime.js');
+    const app=new Application();
+    await app.init({
+      preference:'webgl',resizeTo:viewport,
+      backgroundAlpha:0,antialias:false,autoDensity:true,
+      resolution:Math.min(devicePixelRatio||1,2),sharedTicker:false,autoStart:true
+    });
+    state.app=app;
+    state.createStudy=createStudy;
+    app.ticker.maxFPS=60;
+    app.canvas.className='render-canvas';
+    app.canvas.setAttribute('role','img');
+    app.canvas.setAttribute('aria-label','Интерактивная графическая сцена PixiJS');
+    viewport.prepend(app.canvas);
+    pointer.x=app.screen.width/2;pointer.y=app.screen.height/2;
+    resizeObserver=new ResizeObserver(()=>{
+      requestAnimationFrame(()=>{
+        if(!state.app||!state.scene||!dialog.open)return;
+        state.app.resize();
+        state.scene.resize(state.app.screen.width,state.app.screen.height);
+      });
+    });
+    resizeObserver.observe(viewport);
+    app.ticker.add(({deltaTime,deltaMS})=>{
+      if(!dialog.open||!state.scene)return;
+      try{
+        state.scene.update(Math.min(deltaTime,2.4)*(state.reduced?.14:1),pointer,state.intensity);
+      }catch(error){
+        console.error('Pixi animation error',state.selected.id,error);
+        showStageError(error);
+        app.stop();
+      }
+      tickElapsed+=deltaMS;
+      if(tickElapsed>650){tickElapsed=0;$('#fps').textContent=Math.round(app.ticker.FPS)+' FPS';}
+    });
+    return app;
+  })();
+  try{return await initPromise;}finally{initPromise=null;}
 }
-function randomStudy(){
-  const allowed=catalog.filter(s=>!cards.get(s.id).card.hidden);
-  const pool=allowed.length?allowed:catalog;
-  const choices=pool.filter(s=>s.id!==state.chosen.id);
-  select((choices.length?choices:pool)[Math.floor(Math.random()*(choices.length?choices.length:pool.length))].id);
+function showStageError(error) {
+  $('#stage-loading').classList.add('is-hidden');
+  $('#stage-error').hidden=false;
+  $('#error-details').textContent=error?.message||String(error)||'WebGL unavailable';
 }
-function getPointer(event){
+async function renderStudy(token) {
+  $('#stage-error').hidden=true;
+  $('#stage-loading').classList.remove('is-hidden');
+  try {
+    const app=await ensureApp();
+    if(!dialog.open||token!==sceneSerial){app.stop();return;}
+    state.scene?.destroy();
+    state.scene=state.createStudy(app,state.selected,Number.parseInt(selectedAccent().slice(1),16));
+    app.resize(); state.scene.resize(app.screen.width,app.screen.height);
+    $('#stage-loading').classList.add('is-hidden');
+    if (!state.paused&&!document.hidden)app.start();else app.stop();
+  } catch(error) {
+    console.error('PiJS preview failed',state.selected.id,error);
+    if(dialog.open&&token===sceneSerial)showStageError(error);
+  }
+}
+function closeDialog() {
+  if (dialog.open) {
+    if (location.hash.startsWith('#study-')) updateHash(null,'replace');
+    dialog.close();
+  }
+}
+dialog.addEventListener('close',()=>{
+  ++sceneSerial;
+  try{state.scene?.destroy();}catch(error){console.warn('Scene cleanup',error);}
+  state.scene=null;
+  state.app?.stop();
+  $('#stage-error').hidden=true;
+  $('#stage-loading').classList.remove('is-hidden');
+  document.title='Motion library — PiJS';
+  if(location.hash.startsWith('#study-'))updateHash(null,'replace');
+  originFocus?.focus?.();
+  originFocus=null;
+});
+function nextStudy(dir) {
+  const idx=catalog.findIndex(item=>item.id===state.selected.id);
+  openStudy(catalog[(idx+dir+catalog.length)%catalog.length].id,true);
+}
+function setPaused(paused) {
+  state.paused=paused;
+  $('#pause-label').textContent=paused?'Play':'Pause';
+  $('#pause-icon').textContent=paused?'▶':'Ⅱ';
+  if(!state.app)return;
+  if(paused||document.hidden)state.app.stop();else state.app.start();
+}
+function setAdvanced(open) {
+  $('#advanced-controls').hidden=!open;
+  $('#settings-toggle').setAttribute('aria-expanded',String(open));
+}
+function pointFromEvent(event) {
   const rect=viewport.getBoundingClientRect();
   pointer.x=Math.max(0,Math.min(rect.width,event.clientX-rect.left));
   pointer.y=Math.max(0,Math.min(rect.height,event.clientY-rect.top));
   pointer.nx=(pointer.x/Math.max(1,rect.width)-.5)*2;
   pointer.ny=(pointer.y/Math.max(1,rect.height)-.5)*2;
 }
-function bindEvents(){
-  $('#search').addEventListener('input',e=>{state.query=e.target.value;updateCards();});
-  $('#favorites-filter').addEventListener('click',()=>{state.favoritesOnly=!state.favoritesOnly;updateCards();});
+function initHandlers() {
+  search.addEventListener('input',event=>{state.query=event.target.value;updateCatalog();});
+  $('#menu-toggle').addEventListener('click',toggleSidebar);
+  $('#sidebar-shade').addEventListener('click',closeSidebar);
+  $('#favorites-nav').addEventListener('click',()=>{
+    state.favoritesOnly=!state.favoritesOnly;
+    state.category='ALL';
+    updateCatalog();
+    closeSidebar();
+  });
+  $('#theme-toggle').addEventListener('click',()=>{
+    const next=document.documentElement.dataset.theme==='light'?'dark':'light';
+    document.documentElement.dataset.theme=next;
+    saveStorage('pijs_library_theme',next);
+    document.querySelector('meta[name="theme-color"]').content=next==='light'?'#f6f6f6':'#0d1113';
+  });
+  $('.header-search').addEventListener('click',()=>{
+    if(matchMedia('(max-width:580px)').matches&&!root.classList.contains('search-open')){
+      root.classList.add('search-open');
+      requestAnimationFrame(()=>search.focus());
+    }
+  });
+  search.addEventListener('blur',()=>{
+    if(matchMedia('(max-width:580px)').matches&&!search.value){
+      setTimeout(()=>{if(document.activeElement!==search)root.classList.remove('search-open');},100);
+    }
+  });
   $('#clear-filters').addEventListener('click',()=>{
-    state.filter='ALL';state.query='';state.favoritesOnly=false;$('#search').value='';updateCards();
+    state.category='ALL';state.favoritesOnly=false;state.query='';
+    search.value='';
+    updateCatalog();
   });
-  $('#shuffle').addEventListener('click',randomStudy);
-  $('#prev-study').addEventListener('click',()=>step(-1));
-  $('#next-study').addEventListener('click',()=>step(1));
-  $('#pause').addEventListener('click',()=>setPause(!state.paused));
-  $('#restart').addEventListener('click',()=>select(state.chosen.id));
-  $('#retry').addEventListener('click',()=>select(state.chosen.id));
+  $('#shuffle').addEventListener('click',()=>{
+    const visible=catalog.filter(study=>!cards.get(study.id).card.hidden);
+    const pool=visible.length?visible:catalog;
+    const index=Math.floor(Math.random()*pool.length);
+    openStudy(pool[index].id,true);
+  });
+  $('#dialog-close').addEventListener('click',closeDialog);
+  $('#dialog-favorite').addEventListener('click',()=>toggleFavorite(state.selected.id));
+  $('#prev-study').addEventListener('click',()=>nextStudy(-1));
+  $('#next-study').addEventListener('click',()=>nextStudy(1));
   $('#fullscreen').addEventListener('click',async()=>{
-    try{if(document.fullscreenElement)await document.exitFullscreen();else await viewport.requestFullscreen();}
-    catch(error){toast('Fullscreen unavailable');}
+    try {if(document.fullscreenElement)await document.exitFullscreen();else await viewport.requestFullscreen();}
+    catch {toast('Fullscreen unavailable');}
   });
-  $('#intensity').addEventListener('input',e=>{
-    const value=Number(e.target.value);
-    state.power=value/100;
+  $('#settings-toggle').addEventListener('click',()=>setAdvanced($('#advanced-controls').hidden));
+  $('#pause').addEventListener('click',()=>setPaused(!state.paused));
+  $('#restart').addEventListener('click',()=>{
+    openStudy(state.selected.id,false);
+    setPaused(false);
+  });
+  $('#retry').addEventListener('click',()=>openStudy(state.selected.id,false));
+  $('#intensity').addEventListener('input',event=>{
+    const value=Number(event.target.value);
+    state.intensity=value/100;
     $('#intensity-value').textContent=value+'%';
-    e.target.style.setProperty('--range',value+'%');
+    event.target.style.setProperty('--range',value+'%');
   });
   $$('[data-color]').forEach(button=>button.addEventListener('click',()=>{
     state.color=button.dataset.color;
-    refreshSwatches();select(state.chosen.id);
+    updateSwatches();
+    openStudy(state.selected.id,false);
   }));
   $('#reduced-motion').addEventListener('click',()=>{
     state.reduced=!state.reduced;
     $('#reduced-motion').setAttribute('aria-pressed',String(state.reduced));
-    $('#render-status').textContent=state.reduced?'LIVE / REDUCED MOTION':'LIVE / RENDERING';
+    $('#reduced-motion').textContent='Reduced motion: '+(state.reduced?'on':'off');
   });
   $('#copy-url').addEventListener('click',async()=>{
     try{await navigator.clipboard.writeText(location.href);toast('Link copied');}
-    catch(error){toast('Copy this address from the browser');}
+    catch{toast('Copy the URL from the address bar');}
   });
   $('#export-png').addEventListener('click',async()=>{
-    if(!state.app||!state.active)return;
+    if(!state.app||!state.scene)return;
     const button=$('#export-png');button.disabled=true;
-    try{
+    try {
       const data=await state.app.renderer.extract.base64(state.app.stage);
-      const a=document.createElement('a');a.href=data;a.download='pijs-'+state.chosen.id+'.png';
-      document.body.appendChild(a);a.click();a.remove();toast('PNG exported');
+      const a=document.createElement('a');
+      a.href=data;a.download='pijs-'+state.selected.id+'.png';
+      document.body.appendChild(a);a.click();a.remove();toast('PNG saved');
     }catch(error){console.error(error);toast('Export unavailable');}
     finally{button.disabled=false;}
   });
-  viewport.addEventListener('pointerenter',()=>{pointer.inside=true;});
-  viewport.addEventListener('pointerleave',()=>{pointer.inside=false;});
-  viewport.addEventListener('pointermove',e=>{getPointer(e);pointer.inside=true;});
-  viewport.addEventListener('pointerdown',e=>{
-    getPointer(e);pointer.inside=true;
-    if(e.pointerType==='touch')viewport.setPointerCapture(e.pointerId);
-    state.active?.click(pointer,state.power);
+  viewport.addEventListener('pointerenter',()=>pointer.inside=true);
+  viewport.addEventListener('pointerleave',()=>pointer.inside=false);
+  viewport.addEventListener('pointermove',event=>{pointFromEvent(event);pointer.inside=true;});
+  viewport.addEventListener('pointerdown',event=>{
+    pointFromEvent(event);pointer.inside=true;
+    state.scene?.click(pointer,state.intensity);
   });
-  viewport.addEventListener('pointerup',()=>state.active?.pointerUp());
-  viewport.addEventListener('pointercancel',()=>state.active?.pointerUp());
+  viewport.addEventListener('pointerup',()=>state.scene?.pointerUp());
+  viewport.addEventListener('pointercancel',()=>state.scene?.pointerUp());
+  document.addEventListener('visibilitychange',()=>{
+    if(state.app) {
+      if(document.hidden||state.paused||!dialog.open)state.app.stop();
+      else state.app.start();
+    }
+  });
+  window.addEventListener('popstate',()=>{
+    const id=location.hash.slice(1);
+    if(catalog.some(study=>study.id===id))openStudy(id,false);
+    else closeDialog();
+  });
   window.addEventListener('hashchange',()=>{
-    const candidate=location.hash.slice(1);
-    if(catalog.some(s=>s.id===candidate)&&candidate!==state.chosen.id)select(candidate);
+    const id=location.hash.slice(1);
+    if(catalog.some(study=>study.id===id)&&id!==state.selected.id)openStudy(id,false);
+    else if(!id&&dialog.open)closeDialog();
   });
   document.addEventListener('keydown',event=>{
     const tag=event.target?.tagName;
-    if(event.ctrlKey||event.altKey||event.metaKey||['INPUT','TEXTAREA','SELECT'].includes(tag))return;
-    if(event.key==='/'){event.preventDefault();$('#search').focus();}
-    else if(event.code==='ArrowRight'){step(1);event.preventDefault();}
-    else if(event.code==='ArrowLeft'){step(-1);event.preventDefault();}
-    else if(event.code==='Space'&&tag!=='BUTTON'){setPause(!state.paused);event.preventDefault();}
-    else if(event.key.toLowerCase()==='r'&&tag!=='BUTTON')select(state.chosen.id);
+    if(event.ctrlKey||event.altKey||event.metaKey)return;
+    if (event.key==='Escape'&&root.classList.contains('search-open')) {
+      root.classList.remove('search-open');search.blur();return;
+    }
+    if (dialog.open) {
+      if(['INPUT','TEXTAREA','SELECT'].includes(tag))return;
+      if(event.key==='ArrowRight'){nextStudy(1);event.preventDefault();}
+      if(event.key==='ArrowLeft'){nextStudy(-1);event.preventDefault();}
+      if(event.code==='Space'&&tag!=='BUTTON'){setPaused(!state.paused);event.preventDefault();}
+      return;
+    }
+    if (event.key==='/'&&!['INPUT','TEXTAREA','SELECT'].includes(tag)) {
+      root.classList.add('search-open');search.focus();event.preventDefault();
+    }
   });
-  document.addEventListener('visibilitychange',()=>{if(state.app)document.hidden?state.app.stop():state.paused?null:state.app.start();});
-  matchReduced.addEventListener?.('change',e=>{
-    state.reduced=e.matches;$('#reduced-motion').setAttribute('aria-pressed',String(state.reduced));
-  });
 }
-async function runCatalogSmoke(){
-  const report={total:catalog.length,ok:0,fail:[],engine:state.app.renderer.name};
-  for(const study of catalog){
-    try {
-      select(study.id);
-      if(!state.active)throw Error('No active scene');
-      state.active.update(1,{x:state.app.screen.width*.5,y:state.app.screen.height*.5,nx:0,ny:0,inside:false},.7);
-      report.ok++;
-    }catch(error){report.fail.push({id:study.id,message:String(error.message||error)});}
-    if(study.number%10===0)await new Promise(r=>requestAnimationFrame(r));
-  }
-  window.__PIJS_SMOKE_RESULT__=report;
-  document.documentElement.dataset.smokeFinished='true';
-  document.documentElement.dataset.smokeFailures=String(report.fail.length);
-  console.info('PIJS_SMOKE_RESULT',report);
-  return report;
+function start() {
+  initCatalog();
+  initHandlers();
+  updateSwatches();
+  $('#reduced-motion').setAttribute('aria-pressed',String(state.reduced));
+  $('#reduced-motion').textContent='Reduced motion: '+(state.reduced?'on':'off');
+  const id=location.hash.slice(1);
+  if(catalog.some(study=>study.id===id))openStudy(id,false);
 }
-
-async function start(){
-  initThumbs();renderFilters();makeCatalog();bindEvents();updateLabels();updateCards();
-  try{
-    const app=new Application();
-    await app.init({
-      preference:'webgl',resizeTo:viewport,backgroundAlpha:0,antialias:false,
-      autoDensity:true,resolution:Math.min(devicePixelRatio||1,2),
-      sharedTicker:false,autoStart:true
-    });
-    state.app=app;state.ready=true;
-    app.ticker.maxFPS=60;
-    app.canvas.className='render-canvas';
-    app.canvas.setAttribute('role','img');
-    app.canvas.setAttribute('aria-label','Живая графическая сцена на PixiJS; управление мышью или касанием');
-    viewport.prepend(app.canvas);
-    pointer.x=app.screen.width/2;pointer.y=app.screen.height/2;
-    select(state.chosen.id);
-    ro=new ResizeObserver(()=>requestAnimationFrame(()=>{
-      if(!state.app||!state.active)return;
-      try{state.app.resize();state.active.resize(state.app.screen.width,state.app.screen.height);}
-      catch(error){console.error('Resize',error);}
-    }));
-    ro.observe(viewport);
-    app.ticker.add(({deltaTime,deltaMS})=>{
-      if(!state.active)return;
-      try{
-        state.active.update(Math.min(deltaTime,2.4)*(state.reduced?.12:1),pointer,state.power);
-      }catch(error){
-        console.error('Animation frame error',state.chosen.id,error);
-        $('#stage-error').hidden=false;$('#error-details').textContent='Rendering error: '+error.message;
-        app.stop();
-      }
-      statsTimer+=deltaMS;
-      if(statsTimer>=550){statsTimer=0;$('#fps').textContent=String(Math.round(app.ticker.FPS));}
-    });
-    window.__PIJS_DEBUG__={catalog,select,runCatalogSmoke,app};
-    if(params.get('smoke')==='1')await runCatalogSmoke();
-  }catch(error){
-    console.error('Unable to initialize PiJS WebGL',error);
-    $('#stage-loading').classList.add('is-hidden');
-    $('#stage-error').hidden=false;$('#error-details').textContent=error.message||String(error);
-  }
-}
-void start();
+start();

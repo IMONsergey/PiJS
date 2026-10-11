@@ -1,8 +1,21 @@
-# PiJS Motion Atlas — 100 Interactive Studies
+# PiJS Motion Library — 100 Interactive Studies
 
 100 original interactive motion studies, organized into 10 collections, inspired by the visual interaction language seen across Awwwards sites from October 2025 to October 2026.
 
-**[Open live demo](https://imonsergey.github.io/PiJS/)** · [Source branch](https://github.com/IMONsergey/PiJS/tree/feat/awwwards-100-lab) · [Original PixiJS](https://github.com/pixijs/pixijs)
+**[Open live library](https://imonsergey.github.io/PiJS/)** · [Source branch](https://github.com/IMONsergey/PiJS/tree/feat/awwwards-100-lab) · [Original PixiJS](https://github.com/pixijs/pixijs)
+
+## Interface / October 2026
+
+The public gallery was simplified using the published [APCOSYS Components Library](https://imonsergey.github.io/Apco-components-lib/) as the visual reference:
+
+- Semantic surface, border, ink and turquoise action tokens; Instrument Sans and IBM Plex Mono.
+- Compact 64px header, 248px sidebar, search, clean cards and mobile navigation.
+- Full-page catalog first, native modal preview on click; optional advanced controls hidden by default.
+- Light theme by default with a persistent dark theme; favorites, links, navigation, intensity, palette and PNG export retained.
+- Lightweight initial load: PixiJS and all WebGL rendering code are lazy-loaded only when opening a live animation, and the renderer stops when the modal closes.
+- Fonts are referenced at the owner's existing public Components Library URL; native sans/mono fallbacks apply when unavailable. No font binaries are duplicated.
+
+The 100 original effect definitions in src/data.js, src/effects-*.js and src/engine.js are unchanged by this UX-only redesign.
 
 ## Architecture
 
