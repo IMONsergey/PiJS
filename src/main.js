@@ -1,220 +1,348 @@
 import { Application } from 'pixi.js';
-import { buildScene, catalog } from './scenes.js';
+import { catalog, collections, findStudy } from './data.js';
+import { createStudy } from './engine.js';
+import { paintThumb } from './thumbs.js';
 import './style.css';
 
-const $ = (selector) => document.querySelector(selector);
-const viewport = $('#viewport');
-const list = $('#scene-list');
-const params = new URLSearchParams(window.location.search);
-const accentOptions = {
-  green: { hex: 0x04e061, css: '#04e061', title: 'NEON GREEN' },
-  blue: { hex: 0x54abff, css: '#54abff', title: 'SKY BLUE' },
-  purple: { hex: 0xb08cff, css: '#b08cff', title: 'LILAC' },
-  coral: { hex: 0xff6d79, css: '#ff6d79', title: 'CORAL' },
+const $=s=>document.querySelector(s), $$=s=>[...document.querySelectorAll(s)];
+const gallery=$('#gallery'),viewport=$('#viewport'),player=$('.player-pane'),params=new URLSearchParams(location.search);
+const palette={lime:'#d9f56e',blue:'#80a9ff',orange:'#ff8d60',lavender:'#bb98ff',ice:'#f6f4ec'};
+const matchReduced=window.matchMedia('(prefers-reduced-motion: reduce)');
+const state={
+  chosen:findStudy(location.hash.replace('#','') || params.get('scene')),
+  filter:'ALL',query:'',favoritesOnly:false,favorites:new Set(),
+  color:'original',power:.68,paused:false,reduced:matchReduced.matches,
+  app:null,active:null,ready:false,loading:false,lastMouse:false
 };
+const pointer={x:0,y:0,nx:0,ny:0,inside:false};
+const cards=new Map();
+let observer=null, statsTimer=0,toastTimeout=0,selectSerial=0,ro=null;
 
-let app = null;
-let active = null;
-let selectedId = catalog.some(s => s.id === params.get('scene')) ? params.get('scene') : catalog[0].id;
-let accentKey = 'green';
-let intensity = 0.65;
-let paused = false;
-let reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-let statMs = 0;
-let state = 'booting';
-const pointer = { x: 0, y: 0, nx: 0, ny: 0, inside: false };
+try {
+  state.favorites=new Set(JSON.parse(localStorage.getItem('pijs_motion_favorites_v1')||'[]'));
+} catch(error) {console.debug('Local favorites unavailable',error);}
+const toHex=str=>parseInt(str.slice(1),16);
 
-function setAccent(key) {
-  if (!accentOptions[key]) return;
-  accentKey = key;
-  const color = accentOptions[key];
-  document.documentElement.style.setProperty('--accent', color.css);
-  $('#color-name').textContent = color.title;
-  document.querySelectorAll('[data-accent]').forEach(button => {
-    const active = button.dataset.accent === key;
-    button.classList.toggle('is-current', active);
-    button.setAttribute('aria-pressed', String(active));
-  });
-  if (state === 'ready') activate(selectedId);
+function toast(message) {
+  const el=$('#toast');el.textContent=message;el.hidden=false;
+  clearTimeout(toastTimeout);
+  toastTimeout=setTimeout(()=>{el.hidden=true;},1750);
 }
 
-function renderNavigation() {
-  list.innerHTML = '';
-  catalog.forEach((entry, index) => {
-    const button = document.createElement('button');
-    button.type = 'button';
-    button.className = 'scene-item';
-    button.dataset.scene = entry.id;
-    button.innerHTML = `<span class="scene-item-index">${String(index + 1).padStart(2, '0')}</span><span class="scene-item-label">${entry.title}<small>${entry.category}</small></span><span class="scene-item-icon" aria-hidden="true">${entry.indicator}</span>`;
-    button.addEventListener('click', () => activate(entry.id));
-    list.appendChild(button);
-  });
+function createCard(entry) {
+  const card=document.createElement('article');
+  card.className='study-card';card.dataset.id=entry.id;
+  card.dataset.category=entry.category;
+  const open=document.createElement('button');
+  open.className='study-open';open.type='button';
+  open.setAttribute('aria-label',entry.number+' — '+entry.title+', '+entry.categoryLabel);
+  const thumb=document.createElement('div');thumb.className='thumb';
+  const canvas=document.createElement('canvas');canvas.setAttribute('aria-hidden','true');
+  const num=document.createElement('span');num.className='thumb-number';num.textContent=String(entry.number).padStart(3,'0');
+  thumb.append(canvas,num);
+  const body=document.createElement('div');body.className='card-body';
+  const category=document.createElement('div');category.className='card-tag';category.textContent=entry.categoryLabel.toUpperCase();
+  const title=document.createElement('div');title.className='card-title';title.textContent=entry.title;
+  body.append(category,title);
+  const arrow=document.createElement('span');arrow.className='card-arrow';arrow.textContent='↗';
+  open.append(thumb,body,arrow);
+  const fav=document.createElement('button');
+  fav.type='button';fav.className='fave-toggle';fav.textContent=state.favorites.has(entry.id)?'★':'☆';
+  fav.setAttribute('aria-label','Избранное: '+entry.title);
+  fav.setAttribute('aria-pressed',String(state.favorites.has(entry.id)));
+  fav.classList.toggle('is-active',state.favorites.has(entry.id));
+  fav.addEventListener('click',()=>toggleFavorite(entry.id));
+  open.addEventListener('click',()=>select(entry.id,true));
+  card.append(open,fav);
+  cards.set(entry.id,{card,canvas,fav});
+  observer?.observe(card);
+  return card;
+}
+function makeCatalog() {
+  const fragment=document.createDocumentFragment();
+  for(const entry of catalog) fragment.appendChild(createCard(entry));
+  gallery.appendChild(fragment);
+  if(observer){for(const item of cards.values())observer.observe(item.card);}
 }
 
-function updateNavigation() {
-  document.querySelectorAll('[data-scene]').forEach(button => {
-    const selected = button.dataset.scene === selectedId;
-    button.classList.toggle('is-selected', selected);
-    button.setAttribute('aria-current', selected ? 'true' : 'false');
-  });
-}
-
-function activate(id) {
-  const entry = catalog.find(item => item.id === id);
-  if (!entry) return;
-  selectedId = id;
-  const index = catalog.indexOf(entry);
-  const number = String(index + 1).padStart(2, '0');
-  $('#breadcrumb').textContent = entry.title;
-  $('#viewport-index').textContent = `${number} / 07`;
-  $('#viewport-kind').textContent = entry.category;
-  $('#scene-title').textContent = entry.title;
-  $('#scene-description').textContent = entry.summary;
-  $('#scene-tip').textContent = entry.tip;
-  updateNavigation();
-  const query = new URL(window.location.href);
-  query.searchParams.set('scene', id);
-  window.history.replaceState(null, '', query.pathname + query.search + query.hash);
-  if (!app || state !== 'ready') return;
-  active?.destroy();
-  active = buildScene(id, { app, color: accentOptions[accentKey].hex, motion: reduced });
-  active.resize(app.screen.width, app.screen.height);
-  $('#object-value').textContent = Intl.NumberFormat('en-US').format(active.count);
-  $('#stage-status').textContent = 'SCENE ACTIVE';
-  if (paused) setPause(false);
-}
-
-function setPause(shouldPause) {
-  paused = shouldPause;
-  $('#pause-label').textContent = paused ? 'RESUME SCENE' : 'PAUSE SCENE';
-  $('#pause-symbol').textContent = paused ? '▶' : 'Ⅱ';
-  $('#stage-status').textContent = paused ? 'SCENE PAUSED' : 'SCENE ACTIVE';
-  $('#motion-mode').textContent = paused ? 'PAUSED' : reduced ? 'REDUCED' : 'ENABLED';
-  if (app) {
-    if (paused) app.stop(); else app.start();
-  }
-}
-
-function setReducedMotion(next) {
-  reduced = next;
-  $('#reduce-motion').setAttribute('aria-pressed', String(reduced));
-  $('#reduce-motion').classList.toggle('is-on', reduced);
-  $('#motion-mode').textContent = reduced ? 'REDUCED' : paused ? 'PAUSED' : 'ENABLED';
-}
-
-function refreshPointer(e) {
-  const bounds = viewport.getBoundingClientRect();
-  pointer.x = Math.max(0, Math.min(bounds.width, e.clientX - bounds.left));
-  pointer.y = Math.max(0, Math.min(bounds.height, e.clientY - bounds.top));
-  pointer.nx = (pointer.x / Math.max(1, bounds.width) - 0.5) * 2;
-  pointer.ny = (pointer.y / Math.max(1, bounds.height) - 0.5) * 2;
-  active?.pointerMove?.(pointer);
-  $('#pointer-status').textContent = `${Math.round(pointer.x)} : ${Math.round(pointer.y)} / POINTER`;
-}
-
-function setFullscreen() {
-  if (document.fullscreenElement) document.exitFullscreen?.();
-  else viewport.requestFullscreen?.().catch(() => {});
-}
-
-function keyboard(event) {
-  if (event.ctrlKey || event.metaKey || event.altKey) return;
-  const tag = event.target?.tagName;
-  if (['INPUT', 'SELECT', 'TEXTAREA', 'BUTTON'].includes(tag)) return;
-  if (event.code === 'ArrowRight' || event.code === 'ArrowLeft') {
-    const i = catalog.findIndex(s => s.id === selectedId);
-    const next = (i + (event.code === 'ArrowRight' ? 1 : -1) + catalog.length) % catalog.length;
-    activate(catalog[next].id);
-    event.preventDefault();
-  } else if (event.code === 'Space') {
-    setPause(!paused);
-    event.preventDefault();
-  } else if (event.key.toLowerCase() === 'r') {
-    activate(selectedId);
-  }
-}
-
-function bindControls() {
-  $('#intensity').addEventListener('input', e => {
-    const amount = Number(e.target.value);
-    intensity = amount / 100;
-    $('#intensity-value').textContent = amount + '%';
-    e.target.style.setProperty('--progress', `${amount}%`);
-  });
-  $('#intensity').style.setProperty('--progress', '65%');
-  document.querySelectorAll('[data-accent]').forEach(button => button.addEventListener('click', () => setAccent(button.dataset.accent)));
-  $('#toggle-pause').addEventListener('click', () => setPause(!paused));
-  $('#reset-scene').addEventListener('click', () => activate(selectedId));
-  $('#reduce-motion').addEventListener('click', () => setReducedMotion(!reduced));
-  $('#fullscreen').addEventListener('click', setFullscreen);
-  $('#retry').addEventListener('click', () => location.reload());
-  setReducedMotion(reduced);
-  viewport.addEventListener('pointerenter', () => { pointer.inside = true; });
-  viewport.addEventListener('pointerleave', () => { pointer.inside = false; });
-  viewport.addEventListener('pointermove', refreshPointer);
-  viewport.addEventListener('pointerdown', e => { refreshPointer(e); active?.click?.(pointer, intensity); });
-  document.addEventListener('pointermove', e => {
-    if (e.target !== viewport && !viewport.contains(e.target) && e.buttons) refreshPointer(e);
-  });
-  document.addEventListener('pointerup', () => active?.pointerUp?.());
-  document.addEventListener('pointercancel', () => active?.pointerUp?.());
-  document.addEventListener('keydown', keyboard);
-  document.addEventListener('visibilitychange', () => {
-    if (!app || paused) return;
-    if (document.hidden) app.stop(); else app.start();
-  });
-}
-
-async function start() {
-  renderNavigation();
-  bindControls();
-  activate(selectedId);
-  try {
-    app = new Application();
-    await app.init({
-      preference: 'webgl',
-      resizeTo: viewport,
-      backgroundAlpha: 0,
-      antialias: false,
-      autoDensity: true,
-      resolution: Math.min(window.devicePixelRatio || 1, 2),
-      autoStart: true,
-      sharedTicker: false,
-    });
-    app.ticker.maxFPS = 60;
-    app.canvas.className = 'render-canvas';
-    app.canvas.setAttribute('aria-label', 'Интерактивная графическая сцена PixiJS');
-    viewport.prepend(app.canvas);
-    pointer.x = app.screen.width / 2;
-    pointer.y = app.screen.height / 2;
-    $('#renderer-value').textContent = app.renderer.name.replace('Renderer', '').toUpperCase();
-    $('#resolution-value').textContent = app.renderer.resolution.toFixed(1) + '×';
-    state = 'ready';
-    activate(selectedId);
-    $('#loading-overlay').classList.add('is-hidden');
-    const ro = new ResizeObserver(() => {
-      requestAnimationFrame(() => {
-        if (!app || !active) return;
-        app.resize();
-        active.resize(app.screen.width, app.screen.height);
-      });
-    });
-    ro.observe(viewport);
-    app.ticker.add(({ deltaTime, deltaMS }) => {
-      const factor = reduced ? 0.18 : 1;
-      active?.update(Math.min(deltaTime, 3) * factor, pointer, intensity * 1.3);
-      statMs += deltaMS;
-      if (statMs > 500) {
-        statMs = 0;
-        $('#fps-value').textContent = String(Math.round(app.ticker.FPS));
+function initThumbs() {
+  if('IntersectionObserver' in window) {
+    observer=new IntersectionObserver(entries=>{
+      for(const entry of entries)if(entry.isIntersecting){
+        const study=findStudy(entry.target.dataset.id);
+        const item=cards.get(study.id);
+        if(item && !item.canvas.dataset.drawn){
+          paintThumb(item.canvas,study);item.canvas.dataset.drawn='1';
+        }
+        observer.unobserve(entry.target);
       }
-    });
-  } catch (error) {
-    console.error('PiJS initialization failed:', error);
-    state = 'failed';
-    $('#loading-overlay').classList.add('is-hidden');
-    $('#error-overlay').hidden = false;
+    },{rootMargin:'350px'});
   }
 }
+function updateCards() {
+  const q=state.query.toLocaleLowerCase('ru').trim();
+  let visible=0;
+  for(const entry of catalog){
+    const item=cards.get(entry.id);
+    const matches=state.filter==='ALL'||entry.category===state.filter;
+    const searched=!q||(entry.title+' '+entry.family+' '+entry.categoryLabel+' '+entry.category).toLowerCase().includes(q);
+    const fav=!state.favoritesOnly||state.favorites.has(entry.id);
+    const ok=matches&&searched&&fav;
+    item.card.hidden=!ok;
+    if(ok)visible++;
+    item.card.classList.toggle('is-current',state.chosen.id===entry.id);
+    if(ok&&!observer&&!item.canvas.dataset.drawn){paintThumb(item.canvas,entry);item.canvas.dataset.drawn='1';}
+  }
+  $('#visible-count').textContent=visible+' / 100';
+  $('#catalog-results').textContent=visible+' '+(visible===1?'STUDY':'STUDIES');
+  $('#empty-state').hidden=visible>0;
+  $('#favorites-count').textContent=String(state.favorites.size);
+  $('#favorites-filter').classList.toggle('is-active',state.favoritesOnly);
+  $('#favorites-filter').setAttribute('aria-pressed',String(state.favoritesOnly));
+  $$('.filter').forEach(b=>{
+    const selected=b.dataset.filter===state.filter;
+    b.classList.toggle('is-active',selected);
+    b.setAttribute('aria-pressed',String(selected));
+  });
+  if(observer){for(const item of cards.values())if(!item.card.hidden&&!item.canvas.dataset.drawn)observer.observe(item.card);}
+}
 
+function renderFilters() {
+  const box=$('#filters');
+  const filters=[{key:'ALL',label:'ALL',count:100},...collections.map(c=>({key:c.key,label:c.label,count:10}))];
+  for(const entry of filters){
+    const btn=document.createElement('button');
+    btn.className='filter';btn.type='button';btn.dataset.filter=entry.key;
+    btn.innerHTML=entry.label.toUpperCase()+' <span class="filter-count">'+entry.count+'</span>';
+    btn.addEventListener('click',()=>{state.filter=entry.key;updateCards();});
+    box.appendChild(btn);
+  }
+}
+function saveFavorites(){
+  try {localStorage.setItem('pijs_motion_favorites_v1',JSON.stringify([...state.favorites]));}
+  catch(error){console.debug('Favorites were not persisted',error);}
+}
+function toggleFavorite(id){
+  if(state.favorites.has(id))state.favorites.delete(id);else state.favorites.add(id);
+  const item=cards.get(id),on=state.favorites.has(id);
+  item.fav.classList.toggle('is-active',on);item.fav.textContent=on?'★':'☆';
+  item.fav.setAttribute('aria-pressed',String(on));
+  saveFavorites();updateCards();
+  toast(on?'Added to favorites':'Removed from favorites');
+}
+function currentColor(){
+  return state.color==='original'?state.chosen.accent:palette[state.color];
+}
+function refreshSwatches(){
+  const hex=currentColor();
+  document.documentElement.style.setProperty('--accent',hex);
+  document.querySelector('[data-color="original"]').style.setProperty('--swatch',state.chosen.accent);
+  $$('[data-color]').forEach(b=>{
+    const active=b.dataset.color===state.color;
+    b.classList.toggle('is-current',active);
+    b.setAttribute('aria-pressed',String(active));
+  });
+}
+
+function updateLabels(){
+  const study=state.chosen;
+  $('#active-number').textContent=String(study.number).padStart(3,'0')+' / 100';
+  $('#stage-category').textContent=study.category+' / MOTION';
+  $('#stage-title').textContent=study.title.toUpperCase();
+  $('#detail-title').textContent=study.title;
+  $('#detail-category').textContent=study.categoryLabel.toUpperCase();
+  $('#detail-count').textContent=String(study.number).padStart(2,'0')+' / 100';
+  $('#detail-description').textContent=study.summary;
+  $('#detail-tip').textContent=study.tip;
+  $('#reference-link').textContent=study.reference.label.toUpperCase()+' ↗';
+  $('#reference-link').href=study.reference.url;
+  document.title=study.title+' — PiJS Motion Atlas / 100';
+  refreshSwatches();
+}
+function setPause(paused) {
+  state.paused=paused;
+  $('#pause-label').textContent=paused?'RESUME':'PAUSE';
+  $('#pause-icon').textContent=paused?'▶':'Ⅱ';
+  $('#render-status').textContent=paused?'PAUSED / STANDBY':state.reduced?'LIVE / REDUCED MOTION':'LIVE / RENDERING';
+  if(state.app){if(paused||document.hidden)state.app.stop();else state.app.start();}
+}
+function select(id,fromClick=false) {
+  const next=catalog.find(s=>s.id===id);
+  if(!next)return false;
+  ++selectSerial;
+  state.chosen=next;updateLabels();updateCards();
+  const url=new URL(location.href);url.hash=next.id;
+  history.replaceState(null,'',url.pathname+url.search+url.hash);
+  if(!state.ready)return true;
+  try {
+    state.active?.destroy();
+    state.active=null;
+    state.active=createStudy(state.app,next,toHex(currentColor()));
+    state.active.resize(state.app.screen.width,state.app.screen.height);
+    $('#objects').textContent=new Intl.NumberFormat('en-US').format(state.active.count);
+    $('#stage-error').hidden=true;$('#stage-loading').classList.add('is-hidden');
+    if(state.paused)setPause(false);
+    if(fromClick&&window.matchMedia('(max-width:1000px)').matches){
+      player.scrollIntoView({block:'start',behavior:state.reduced?'instant':'smooth'});
+    }
+  } catch(error){
+    console.error('Study error:',next.id,error);
+    state.active=null;
+    $('#stage-loading').classList.add('is-hidden');
+    $('#stage-error').hidden=false;
+    $('#error-details').textContent=String(error?.message||error);
+  }
+  return true;
+}
+function step(direction){
+  const current=catalog.findIndex(x=>x.id===state.chosen.id);
+  select(catalog[(current+direction+catalog.length)%catalog.length].id);
+}
+function randomStudy(){
+  const allowed=catalog.filter(s=>!cards.get(s.id).card.hidden);
+  const pool=allowed.length?allowed:catalog;
+  const choices=pool.filter(s=>s.id!==state.chosen.id);
+  select((choices.length?choices:pool)[Math.floor(Math.random()*(choices.length?choices.length:pool.length))].id);
+}
+function getPointer(event){
+  const rect=viewport.getBoundingClientRect();
+  pointer.x=Math.max(0,Math.min(rect.width,event.clientX-rect.left));
+  pointer.y=Math.max(0,Math.min(rect.height,event.clientY-rect.top));
+  pointer.nx=(pointer.x/Math.max(1,rect.width)-.5)*2;
+  pointer.ny=(pointer.y/Math.max(1,rect.height)-.5)*2;
+}
+function bindEvents(){
+  $('#search').addEventListener('input',e=>{state.query=e.target.value;updateCards();});
+  $('#favorites-filter').addEventListener('click',()=>{state.favoritesOnly=!state.favoritesOnly;updateCards();});
+  $('#clear-filters').addEventListener('click',()=>{
+    state.filter='ALL';state.query='';state.favoritesOnly=false;$('#search').value='';updateCards();
+  });
+  $('#shuffle').addEventListener('click',randomStudy);
+  $('#prev-study').addEventListener('click',()=>step(-1));
+  $('#next-study').addEventListener('click',()=>step(1));
+  $('#pause').addEventListener('click',()=>setPause(!state.paused));
+  $('#restart').addEventListener('click',()=>select(state.chosen.id));
+  $('#retry').addEventListener('click',()=>select(state.chosen.id));
+  $('#fullscreen').addEventListener('click',async()=>{
+    try{if(document.fullscreenElement)await document.exitFullscreen();else await viewport.requestFullscreen();}
+    catch(error){toast('Fullscreen unavailable');}
+  });
+  $('#intensity').addEventListener('input',e=>{
+    const value=Number(e.target.value);
+    state.power=value/100;
+    $('#intensity-value').textContent=value+'%';
+    e.target.style.setProperty('--range',value+'%');
+  });
+  $$('[data-color]').forEach(button=>button.addEventListener('click',()=>{
+    state.color=button.dataset.color;
+    refreshSwatches();select(state.chosen.id);
+  }));
+  $('#reduced-motion').addEventListener('click',()=>{
+    state.reduced=!state.reduced;
+    $('#reduced-motion').setAttribute('aria-pressed',String(state.reduced));
+    $('#render-status').textContent=state.reduced?'LIVE / REDUCED MOTION':'LIVE / RENDERING';
+  });
+  $('#copy-url').addEventListener('click',async()=>{
+    try{await navigator.clipboard.writeText(location.href);toast('Link copied');}
+    catch(error){toast('Copy this address from the browser');}
+  });
+  $('#export-png').addEventListener('click',async()=>{
+    if(!state.app||!state.active)return;
+    const button=$('#export-png');button.disabled=true;
+    try{
+      const data=await state.app.renderer.extract.base64(state.app.stage);
+      const a=document.createElement('a');a.href=data;a.download='pijs-'+state.chosen.id+'.png';
+      document.body.appendChild(a);a.click();a.remove();toast('PNG exported');
+    }catch(error){console.error(error);toast('Export unavailable');}
+    finally{button.disabled=false;}
+  });
+  viewport.addEventListener('pointerenter',()=>{pointer.inside=true;});
+  viewport.addEventListener('pointerleave',()=>{pointer.inside=false;});
+  viewport.addEventListener('pointermove',e=>{getPointer(e);pointer.inside=true;});
+  viewport.addEventListener('pointerdown',e=>{
+    getPointer(e);pointer.inside=true;
+    if(e.pointerType==='touch')viewport.setPointerCapture(e.pointerId);
+    state.active?.click(pointer,state.power);
+  });
+  viewport.addEventListener('pointerup',()=>state.active?.pointerUp());
+  viewport.addEventListener('pointercancel',()=>state.active?.pointerUp());
+  window.addEventListener('hashchange',()=>{
+    const candidate=location.hash.slice(1);
+    if(catalog.some(s=>s.id===candidate)&&candidate!==state.chosen.id)select(candidate);
+  });
+  document.addEventListener('keydown',event=>{
+    const tag=event.target?.tagName;
+    if(event.ctrlKey||event.altKey||event.metaKey||['INPUT','TEXTAREA','SELECT'].includes(tag))return;
+    if(event.key==='/'){event.preventDefault();$('#search').focus();}
+    else if(event.code==='ArrowRight'){step(1);event.preventDefault();}
+    else if(event.code==='ArrowLeft'){step(-1);event.preventDefault();}
+    else if(event.code==='Space'&&tag!=='BUTTON'){setPause(!state.paused);event.preventDefault();}
+    else if(event.key.toLowerCase()==='r'&&tag!=='BUTTON')select(state.chosen.id);
+  });
+  document.addEventListener('visibilitychange',()=>{if(state.app)document.hidden?state.app.stop():state.paused?null:state.app.start();});
+  matchReduced.addEventListener?.('change',e=>{
+    state.reduced=e.matches;$('#reduced-motion').setAttribute('aria-pressed',String(state.reduced));
+  });
+}
+async function runCatalogSmoke(){
+  const report={total:catalog.length,ok:0,fail:[],engine:state.app.renderer.name};
+  for(const study of catalog){
+    try {
+      select(study.id);
+      if(!state.active)throw Error('No active scene');
+      state.active.update(1,{x:state.app.screen.width*.5,y:state.app.screen.height*.5,nx:0,ny:0,inside:false},.7);
+      report.ok++;
+    }catch(error){report.fail.push({id:study.id,message:String(error.message||error)});}
+    if(study.number%10===0)await new Promise(r=>requestAnimationFrame(r));
+  }
+  window.__PIJS_SMOKE_RESULT__=report;
+  document.documentElement.dataset.smokeFinished='true';
+  document.documentElement.dataset.smokeFailures=String(report.fail.length);
+  console.info('PIJS_SMOKE_RESULT',report);
+  return report;
+}
+
+async function start(){
+  initThumbs();renderFilters();makeCatalog();bindEvents();updateLabels();updateCards();
+  try{
+    const app=new Application();
+    await app.init({
+      preference:'webgl',resizeTo:viewport,backgroundAlpha:0,antialias:false,
+      autoDensity:true,resolution:Math.min(devicePixelRatio||1,2),
+      sharedTicker:false,autoStart:true
+    });
+    state.app=app;state.ready=true;
+    app.ticker.maxFPS=60;
+    app.canvas.className='render-canvas';
+    app.canvas.setAttribute('role','img');
+    app.canvas.setAttribute('aria-label','Живая графическая сцена на PixiJS; управление мышью или касанием');
+    viewport.prepend(app.canvas);
+    pointer.x=app.screen.width/2;pointer.y=app.screen.height/2;
+    select(state.chosen.id);
+    ro=new ResizeObserver(()=>requestAnimationFrame(()=>{
+      if(!state.app||!state.active)return;
+      try{state.app.resize();state.active.resize(state.app.screen.width,state.app.screen.height);}
+      catch(error){console.error('Resize',error);}
+    }));
+    ro.observe(viewport);
+    app.ticker.add(({deltaTime,deltaMS})=>{
+      if(!state.active)return;
+      try{
+        state.active.update(Math.min(deltaTime,2.4)*(state.reduced?.12:1),pointer,state.power);
+      }catch(error){
+        console.error('Animation frame error',state.chosen.id,error);
+        $('#stage-error').hidden=false;$('#error-details').textContent='Rendering error: '+error.message;
+        app.stop();
+      }
+      statsTimer+=deltaMS;
+      if(statsTimer>=550){statsTimer=0;$('#fps').textContent=String(Math.round(app.ticker.FPS));}
+    });
+    window.__PIJS_DEBUG__={catalog,select,runCatalogSmoke,app};
+    if(params.get('smoke')==='1')await runCatalogSmoke();
+  }catch(error){
+    console.error('Unable to initialize PiJS WebGL',error);
+    $('#stage-loading').classList.add('is-hidden');
+    $('#stage-error').hidden=false;$('#error-details').textContent=error.message||String(error);
+  }
+}
 void start();
